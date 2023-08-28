@@ -4,9 +4,15 @@
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import seaborn as sns
 import random
 from PIL import Image
+
+## Define custom arctan2 function that outputs between 0 and 2pi; Output is not in Pi
+def findatan2(x,y):
+    arctangent2 = np.pi*(1.0-0.5*(1+np.sign(x))*(1-np.sign(y**2))-0.25*(2+np.sign(x))*np.sign(y))-np.sign(x*y)*np.arctan((np.abs(x)-np.abs(y))/(np.abs(x)+np.abs(y)))
+    return arctangent2
 
 ## Set up Y-maze map as binary array; size equals empirical data; each cell equals a pixel
 print('Initializing Y-maze map...')
@@ -16,14 +22,14 @@ img = Image.open('/Users/alisc/Github/ABM-Drosophila/Ymaze.png')
 # Convert image into array
 imgarray = np.asarray(img)
 Ymaze = (imgarray[:,:,0] == 255).astype(bool)
-
-sns.heatmap(Ymaze)
+# Invert Ymaze so 1s are area and 0s are out of bounds
+Ymaze = ~Ymaze
 
 ## Set up (empirical) master angle distribution as vector of length 359 w/ cumulative probability at angle entries
 # mean relative angle
 mu = 180
 # variance of angle distribution
-sigma = 10
+sigma = 25
 tmpangleDistMaster = np.histogram(np.random.normal(mu,sigma,36000000),bins=np.linspace(0,359,360))
 tmp1 = np.append(np.asarray(tmpangleDistMaster[0]),0)
 tmp2 = np.asarray(tmpangleDistMaster[1])
@@ -32,9 +38,9 @@ angleDistMaster = [tmp1, tmp2]
 angleDist = angleDistMaster
 
 ## Set up speed distribution
-mu = 2
+mu = 5
 sigma = 0.25
-tmpSpdHist = np.histogram(np.random.normal(mu,sigma,100000), bins=np.linspace(0,5,100))
+tmpSpdHist = np.histogram(np.random.normal(mu,sigma,100000), bins=np.linspace(0,mu*2,100))
 # Append a zero to fix bin number discrepancy
 tmp1 = np.append(np.asarray(tmpSpdHist[0]),0)
 tmp2 = np.asarray(tmpSpdHist[1])
@@ -42,29 +48,48 @@ spdDist = [tmp1, tmp2]
 
 ## Initialize fly agent object w/ current position, last position, current heading angle
 class flyAgent:
-    def __init__(self, curPos=np.zeros(2, dtype=int), lastPos=np.zeros(2, dtype=int), curAngle=np.zeros(1, dtype=int), lastAngle=np.zeros(1, dtype=int), curSpd=np.zeros(1, dtype=int), lastSpd=np.zeros(1, dtype=int)):
-        self.curPos = curPos       
-        self.lastPos = lastPos
-        self.curAngle = curAngle
-        self.lastAngle = lastAngle
-        self.curSpd = curSpd
-        self.lastSpd = lastSpd
+    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None):
+        self.curPos = curPos if curPos is not None else np.zeros(2, dtype=int)
+        self.lastPos = lastPos if lastPos is not None else np.zeros(2, dtype=int)
+        self.lastPosBackUp = lastPosBackUp if lastPosBackUp is not None else np.zeros(2, dtype=int)
+        self.curAngleAbs = curAngleAbs if curAngleAbs is not None else np.zeros(1, dtype=int)
+        self.curAngleRel = curAngleRel if curAngleRel is not None else np.zeros(1, dtype=int)
+        self.lastAngleAbs = lastAngleAbs if lastAngleAbs is not None else np.zeros(1, dtype=int)
+        self.lastAngleAbsBackUp = lastAngleAbsBackUp if lastAngleAbsBackUp is not None else np.zeros(1, dtype=int)
+        self.lastAngleRel = lastAngleRel if lastAngleRel is not None else np.zeros(1, dtype=int)
+        self.curSpd = curSpd if curSpd is not None else np.zeros(1, dtype=int)
+        self.lastSpd = lastSpd if lastSpd is not None else np.zeros(1, dtype=int)
+        self.OOB = OOB if OOB is not None else np.zeros(1, dtype=int)
+        self.validCoords = validCoords
 
 # Spawn fly in random valid (i.e., inside the Y-maze) starting location (matching empirical behavioral assay start)
 def spawnFly(Ymaze, startPos=None):
-    validPositions = np.transpose( (Ymaze == 1).nonzero() )
+
+    # Transform binary Ymaze image into a coordinate array with the correctorientation
+    validPositions = np.transpose( (np.rot90(np.flipud(Ymaze == 1))).nonzero() )
     # if starting position is not explicitly called, choose randomly based on binary map
     if startPos==None:
         startPos = list( validPositions[ random.randint(0,len(validPositions)-1) ] )
     fly = flyAgent()
-    fly.lastPos = startPos
+    # Set 'last' position as random starting position
+    fly.lastPos = startPos.copy()
     # Randomly (uniform) choose (absolute) heading angle at time of spawn
-    fly.curAngle = random.randint(0,359)
+    fly.curAngleAbs = math.radians(random.randint(0,359))
     # Set speed to 1 pixel for heading computation
     fly.curSpd = 1
     # Assign current position based on valid last position and randomly chosen absolute heading direction
-    fly.curPos[0] = np.round(fly.lastPos[0] + fly.curSpd * math.cos(math.radians(fly.curAngle[0])))
-    fly.curPos[1] = np.round(fly.lastPos[1] + fly.curSpd * math.sin(math.radians(fly.curAngle[0])))
+    fly.curPos[0] = np.round(fly.lastPos[0] + fly.curSpd * math.cos(fly.curAngleAbs))
+    fly.curPos[1] = np.round(fly.lastPos[1] + fly.curSpd * math.sin(fly.curAngleAbs))
+    # Assign starting relative heading direction to be 0; fly is moving straight ahead
+    fly.curAngleRel = 0
+
+    # Save representation of Ymaze array in fly object for wall detection
+    tmpSize = np.shape(Ymaze)
+    fly.validCoords = np.zeros([tmpSize[1], tmpSize[0]],dtype=bool)
+
+    for cell in range(0,len(validPositions)):
+        fly.validCoords[tuple(validPositions[cell])] = True
+
     return fly
 
 # Update angle distribution based on prior (master, empirical angle distribution) and current context (i.e., angles leading to impossible locations)
@@ -75,39 +100,68 @@ def updateAngleDist(fly, angleDist):
 
 # Choose a new angle for fly object at frame f based on angle distribution (and context-dependent variables v with weights wn)
 def chooseAngle(fly, angleDist):
+
     # Update fly object and move last frame's called angle from 'current' to 'last' parameter
     # Note that angle is heading angle relative to fly here
-    fly.lastAngle = fly.curAngle
-    fly.curAngle = random.choices( angleDist[1], angleDist[0] )[0] + 180
-    if fly.curAngle >= 360:
-        fly.curAngle = abs(fly.curAngle - 360)
+    fly.lastAngleRel = fly.curAngleRel
+    # Randomly choose angle and convert it to fly-relative heading angle (0 or 360 are straight ahead)
+    fly.curAngleRel = random.choices( angleDist[1], angleDist[0] )[0] + 180
+    if fly.curAngleRel >= 360:
+        fly.curAngleRel = abs(fly.curAngleRel - 360)
+
+    # Convert relative angle to radians
+    fly.curAngleRel = math.radians(fly.curAngleRel)
 
     return fly
-
-# Convert fly-relative angle to absolute heading angle
-def convertAngle(fly):
-    relAngle = fly.curAngle
-
-    return fly
-
 
 # Choose speed based on previously chosen new angle (speed empirically depends on angle)
 def chooseSpd(fly, spdDist):
+
     # Set just utilized speed as last speed
     fly.lastSpd = fly.curSpd
     # Choose new speed from speed distributions relative to current angle heading
     # Note: Currently sampling from Gaussian
     fly.curSpd = random.choices( spdDist[1],  spdDist[0] )[0]
+
     return fly
 
 # Update new fly position based on chosen angle and speed
 def updatePos(fly):
+
+    # Determine last absolute heading direction
+    fly.lastAngleAbsBackUp = fly.lastAngleAbs.copy()
+    fly.lastAngleAbs = findatan2( fly.curPos[0] - fly.lastPos[0], fly.curPos[1] - fly.lastPos[1] )
+    # If last and current position are the same, last absolute angle is NaN; reassign old heading angle
+    if np.isnan(fly.lastAngleAbs):
+        fly.lastAngleAbs = fly.lastAngleAbsBackUp
+    # Update current absolute heading direction based on last absolute heading direction and current relative heading
+    fly.curAngleAbs = fly.lastAngleAbs + fly.curAngleRel
+
     # Set previous current position as last position for purpose of calculating the next position
-    fly.lastPos = fly.curPos
+    fly.lastPosBackUp = fly.lastPos.copy()
+    fly.lastPos = fly.curPos.copy()
+
     # Make sure that fly-relative heading angle is already converted to map-relative cardinal angle
-    fly.curPos[0] = np.round(fly.lastPos[0] + fly.curSpd * math.cos(math.radians(fly.curAngle[0])))
-    fly.curPos[1] = np.round(fly.lastPos[1] + fly.curSpd * math.sin(math.radians(fly.curAngle[0])))
-    
+    fly.curPos[0] = fly.lastPos[0] + fly.curSpd * math.cos(fly.curAngleAbs)
+    fly.curPos[1] = fly.lastPos[1] + fly.curSpd * math.sin(fly.curAngleAbs)
 
-
+    # Check if current position is NOT out of bounds of the Ymaze environment
+    if not any(fly.curPos >= np.shape(fly.validCoords)) and not any(fly.curPos < 0):
+        # Check if current position is NOT within the maze itself
+        if not fly.validCoords[ fly.curPos[0], fly.curPos[1] ]:
+            # If position is not valid coordinate, reassign old position as current position
+            fly.curPos = fly.lastPos.copy()
+            fly.lastPos = fly.lastPosBackUp.copy()
+            # Also report that fly would have been out of bounds
+            fly.OOB += 1
+        else:
+            # Valid position, proceed as normal and reset out of bounds counter
+            fly.OOB = 0
+    else:
+        # If out of bounds of Ymaze environment, reassign old position as current position
+        fly.curPos = fly.lastPos.copy()
+        fly.lastPos = fly.lastPosBackUp.copy()
+        # Also report that fly would have been out of bounds
+        fly.OOB += 1
+        
     return fly
