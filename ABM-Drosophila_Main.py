@@ -8,6 +8,7 @@ import matplotlib as mpl
 import seaborn as sns
 import random
 from PIL import Image
+import pandas as pd
 
 ## Define custom arctan2 function that outputs between 0 and 2pi; Output is not in Pi
 def findatan2(x,y):
@@ -185,18 +186,20 @@ def updatePos(fly):
         
     return fly
 
-# Run, save, and visualize a fly experiment
+## Run, save, and visualize a fly experiment
+# Expmt is an array with N of duration rows
+# Expmt columns are X[0], Y[1], current Turn number [2], curent Turn direction (left: 0, right:1) [3]  
 def runExperiment(Ymaze, imgYmaze, duration, flySpd, angleBias, visualize=False):
     fly = spawnFly(Ymaze, imgYmaze, flySpd, angleBias)
-    coords = np.zeros([duration,2])
+    expmt = np.zeros([duration, 4])
     for frame in range(duration):
         chooseAngle(fly)
         updatePos(fly)
-        coords[frame,0] = fly.curPos[0]
-        coords[frame,1] = fly.curPos[1]
+        expmt[frame,0] = fly.curPos[0]
+        expmt[frame,1] = fly.curPos[1]
 
     if visualize:
         plt.scatter( Ymaze[:,0], Ymaze[:,1],color='red' )
-        plt.plot( coords[:,0], coords[:,1] )
+        plt.plot( expmt[:,0], expmt[:,1] )
 
-    return coords, fly
+    return expmt, fly
