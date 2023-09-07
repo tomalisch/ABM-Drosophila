@@ -38,7 +38,7 @@ spdDist = [tmp1, tmp2]
 
 ## Initialize fly agent object w/ current position, last position, current heading angle
 class flyAgent:
-    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None, angleBias=None, masterAngleDist=None, angleDist=None):
+    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None, angleBias=None):
         self.curPos = curPos if curPos is not None else np.zeros(2, dtype=int)
         self.lastPos = lastPos if lastPos is not None else np.zeros(2, dtype=int)
         self.lastPosBackUp = lastPosBackUp if lastPosBackUp is not None else np.zeros(2, dtype=int)
@@ -52,8 +52,7 @@ class flyAgent:
         self.OOB = OOB if OOB is not None else np.zeros(1, dtype=int)
         self.validCoords = validCoords
         self.angleBias = angleBias if angleBias is not None else np.zeros(1, dtype=float)
-        self.masterAngleDist = masterAngleDist if masterAngleDist is not None else np.zeros([2,360], dtype=int)
-        self.angleDist = angleDist if angleDist is not None else np.zeros([2,360], dtype=int)
+
 
 # Spawn fly in random valid (i.e., inside the Y-maze) starting location (matching empirical behavioral assay start)
 def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None):
@@ -96,24 +95,6 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None):
         fly.validCoords[tuple(Ymaze[cell])] = True
 
     return fly
-
-
-# Update angle distribution based on prior (master, empirical angle distribution) and current context (i.e., angles leading to impossible locations)
-def updateAngleDist(fly):
-    # If fly did not hit a wall on the previous frame (i.e., OOB is reset to 0), reset current angle distribution to be equal to master angle distribution set upon spawn
-    if fly.OOB == 0:
-        fly.angleDist = fly.masterAngleDist.copy()
-    elif fly.OOB > 0:
-        # If fly hit wall, increase heading angle distribution variance by the amount of frames fly has been stuck in a row
-        mu = 180 + ((fly.angleBias * 20) - 10)
-        sigma = 20 + fly.OOB
-        tmpangleDistMaster = np.histogram(np.random.normal(mu,sigma,36000000),bins=np.linspace(0,359,360))
-        tmp1 = np.append(np.asarray(tmpangleDistMaster[0]),0)
-        tmp2 = np.asarray(tmpangleDistMaster[1])
-        fly.angleDist = [tmp1, tmp2]
-
-    return fly
-
 
 # Choose a new angle for fly object at frame f based on angle distribution (and context-dependent variables v with weights wn)
 def chooseAngle(fly, mu=180, sigma=10, angleDistVarInc=1):
