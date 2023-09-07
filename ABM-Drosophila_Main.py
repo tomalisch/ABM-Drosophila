@@ -9,6 +9,7 @@ import seaborn as sns
 import random
 from PIL import Image
 import pandas as pd
+from shapely.geometry import Point, Polygon
 
 ## Define custom arctan2 function that outputs between 0 and 2pi; Output is not in Pi
 def findatan2(x,y):
@@ -26,6 +27,12 @@ imgYmaze = (imgarray[:,:,0] == 255).astype(bool)
 imgYmaze = ~imgYmaze
 # Transform binary Ymaze image into a coordinate array with the correctorientation
 Ymaze = np.transpose( (np.rot90(np.flipud(imgYmaze == 1))).nonzero() )
+# Save Ymaze bounds for later arm and related turning detection
+YmazeXmax = np.shape(imgYmaze)[0]
+YmazeYmax = np.shape(imgYmaze)[1]
+# Determine polygons outlining arms
+# Bottom arm
+bArmPoly = np.transpose(np.array([Ymaze[Ymaze[:,1]<YmazeYmax/2.6,0], Ymaze[Ymaze[:,1]<YmazeYmax/2.6,1]]))
 
 ## Set up speed distribution
 mu = 5
@@ -36,9 +43,9 @@ tmp1 = np.append(np.asarray(tmpSpdHist[0]),0)
 tmp2 = np.asarray(tmpSpdHist[1])
 spdDist = [tmp1, tmp2]
 
-## Initialize fly agent object w/ current position, last position, current heading angle
+## Initialize fly agent object w/ current position, last position, current heading angle, last heading angle, current and last speed, out of bounds counter, valid coordinates possible within the environment, flies' angular velocity bias, current and last arm turned into, current and last left or right turn made
 class flyAgent:
-    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None, angleBias=None):
+    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None, angleBias=None, curArm=None, lastArm=None):
         self.curPos = curPos if curPos is not None else np.zeros(2, dtype=int)
         self.lastPos = lastPos if lastPos is not None else np.zeros(2, dtype=int)
         self.lastPosBackUp = lastPosBackUp if lastPosBackUp is not None else np.zeros(2, dtype=int)
@@ -52,7 +59,8 @@ class flyAgent:
         self.OOB = OOB if OOB is not None else np.zeros(1, dtype=int)
         self.validCoords = validCoords
         self.angleBias = angleBias if angleBias is not None else np.zeros(1, dtype=float)
-
+        self.curArm = curArm if curArm is not None else np.zeros(1, dtype=int)
+        self.lastArm = lastArm if lastArm is not None else np.zeros(1, dtype=int)
 
 # Spawn fly in random valid (i.e., inside the Y-maze) starting location (matching empirical behavioral assay start)
 def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None):
@@ -165,6 +173,9 @@ def updatePos(fly):
         fly.OOB += 1
         print('Current position out of bounds, resetting to', fly.curPos)
         
+    return fly
+
+def updateTurn(fly, Ymaze):
     return fly
 
 ## Run, save, and visualize a fly experiment
