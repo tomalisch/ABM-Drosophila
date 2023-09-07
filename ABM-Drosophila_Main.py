@@ -4,12 +4,13 @@
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.path import Path
 import matplotlib as mpl
 import seaborn as sns
 import random
 from PIL import Image
 import pandas as pd
-from shapely.geometry import Point, Polygon
+
 
 ## Define custom arctan2 function that outputs between 0 and 2pi; Output is not in Pi
 def findatan2(x,y):
@@ -28,11 +29,12 @@ imgYmaze = ~imgYmaze
 # Transform binary Ymaze image into a coordinate array with the correctorientation
 Ymaze = np.transpose( (np.rot90(np.flipud(imgYmaze == 1))).nonzero() )
 # Save Ymaze bounds for later arm and related turning detection
-YmazeXmax = np.shape(imgYmaze)[0]
-YmazeYmax = np.shape(imgYmaze)[1]
+YmazeXmax = np.shape(imgYmaze)[1]
+YmazeYmax = np.shape(imgYmaze)[0]
 # Determine polygons outlining arms
-# Bottom arm
-bArmPoly = np.transpose(np.array([Ymaze[Ymaze[:,1]<YmazeYmax/2.6,0], Ymaze[Ymaze[:,1]<YmazeYmax/2.6,1]]))
+bArmPoly = Path([(YmazeXmax/3, 0), (YmazeXmax/1.5, 0), (YmazeXmax/1.5, YmazeXmax/3), (YmazeXmax/3, YmazeXmax/3)], closed=True)
+lArmPoly = Path([(0, 0), (YmazeXmax/2, YmazeXmax), (0, YmazeXmax)], closed=True)
+rArmPoly = Path([(YmazeXmax, 0), (YmazeXmax/2, YmazeXmax), (YmazeXmax, YmazeXmax)], closed=True)
 
 ## Set up speed distribution
 mu = 5
@@ -45,7 +47,7 @@ spdDist = [tmp1, tmp2]
 
 ## Initialize fly agent object w/ current position, last position, current heading angle, last heading angle, current and last speed, out of bounds counter, valid coordinates possible within the environment, flies' angular velocity bias, current and last arm turned into, current and last left or right turn made
 class flyAgent:
-    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None, angleBias=None, curArm=None, lastArm=None):
+    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None, angleBias=None, curArm=None, curTurn=None):
         self.curPos = curPos if curPos is not None else np.zeros(2, dtype=int)
         self.lastPos = lastPos if lastPos is not None else np.zeros(2, dtype=int)
         self.lastPosBackUp = lastPosBackUp if lastPosBackUp is not None else np.zeros(2, dtype=int)
@@ -60,7 +62,7 @@ class flyAgent:
         self.validCoords = validCoords
         self.angleBias = angleBias if angleBias is not None else np.zeros(1, dtype=float)
         self.curArm = curArm if curArm is not None else np.zeros(1, dtype=int)
-        self.lastArm = lastArm if lastArm is not None else np.zeros(1, dtype=int)
+        self.curTurn = curTurn if curTurn is not None else np.zeros(1, dtype=int)
 
 # Spawn fly in random valid (i.e., inside the Y-maze) starting location (matching empirical behavioral assay start)
 def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None):
@@ -175,20 +177,61 @@ def updatePos(fly):
         
     return fly
 
-def updateTurn(fly, Ymaze):
+def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
+    # If current position was valid
+    if fly.OOB == 0:
+        # If last arm was bottom arm, check if current position is in either of the other two
+        if fly.curArm == 'b':
+            if lArmPoly.contains_point(fly.curPos):
+                fly.curTurn = 0
+                fly.curArm = 'l'
+            elif rArmPoly.contains_point(fly.curPos):
+                fly.curTurn = 1
+                fly.curArm = 'r'
+            # If current position between arms or still in current arm, set current turn to None but maintain current arm
+            else:
+                fly.curTurn = np.nan
+        # If last arm was left arm, check the other two
+        elif fly.curArm == 'l':
+            if rArmPoly.contains_point(fly.curPos):
+                fly.curTurn = 0
+                fly.curArm = 'r'
+            elif bArmPoly.contains_point(fly.curPos):
+                fly.curTurn = 1
+                fly.curArm ='b'
+            else:
+                fly.curTurn = np.nan
+        # If last arm was right arm
+        elif fly.curArm == 'r':
+            if bArmPoly.contains_point(fly.curPos):
+                fly.curTurn = 0
+                fly.curArm = 'b'
+            elif lArmPoly.contains_point(fly.curPos):
+                fly.curTurn = 1
+                fly.curArm = 'l'
+            else:
+                fly.curTurn = np.nan
+
     return fly
 
 ## Run, save, and visualize a fly experiment
 # Expmt is an array with N of duration rows
 # Expmt columns are X[0], Y[1], current Turn number [2], curent Turn direction (left: 0, right:1) [3]  
-def runExperiment(Ymaze, imgYmaze, duration, flySpd, angleBias, visualize=False):
+def runExperiment(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, angleBias, visualize=False):
     fly = spawnFly(Ymaze, imgYmaze, flySpd, angleBias)
+    # Set up array
     expmt = np.zeros([duration, 4])
+    # Change zeros to NaNs
+    expmt.fill(np.nan)
+
     for frame in range(duration):
         chooseAngle(fly)
         updatePos(fly)
+        updateTurn(fly, bArmPoly, lArmPoly, rArmPoly)
         expmt[frame,0] = fly.curPos[0]
         expmt[frame,1] = fly.curPos[1]
+        expmt[frame,2] += ~np.isnan(fly.curTurn)
+        expmt[frame,3] = fly.curTurn
 
     if visualize:
         plt.scatter( Ymaze[:,0], Ymaze[:,1],color='red' )
