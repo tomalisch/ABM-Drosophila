@@ -31,10 +31,11 @@ Ymaze = np.transpose( (np.rot90(np.flipud(imgYmaze == 1))).nonzero() )
 # Save Ymaze bounds for later arm and related turning detection
 YmazeXmax = np.shape(imgYmaze)[1]
 YmazeYmax = np.shape(imgYmaze)[0]
-# Determine polygons outlining arms
-bArmPoly = Path([(YmazeXmax/3, 0), (YmazeXmax/1.5, 0), (YmazeXmax/1.5, YmazeXmax/3), (YmazeXmax/3, YmazeXmax/3)], closed=True)
-lArmPoly = Path([(0, 0), (YmazeXmax/2, YmazeXmax), (0, YmazeXmax)], closed=True)
-rArmPoly = Path([(YmazeXmax, 0), (YmazeXmax/2, YmazeXmax), (YmazeXmax, YmazeXmax)], closed=True)
+# Determine polygons outlining arms (extends into negatives to make sure every point is considered as part of an arm)
+lArmPoly = Path([(-50, 0), (YmazeXmax/2, YmazeXmax), (-50, YmazeXmax), (0,0)], closed=True)
+rArmPoly = Path([(YmazeXmax+50, 0), (YmazeXmax/2, YmazeXmax), (YmazeXmax+50, YmazeXmax), (0,0)], closed=True)
+bArmPoly = Path([(YmazeXmax/3, -50), (YmazeXmax/1.5, -50), (YmazeXmax/1.5, YmazeXmax/3), (YmazeXmax/3, YmazeXmax/3), (0,0)], closed=True)
+
 
 ## Set up speed distribution
 mu = 5
@@ -61,8 +62,8 @@ class flyAgent:
         self.OOB = OOB if OOB is not None else np.zeros(1, dtype=int)
         self.validCoords = validCoords
         self.angleBias = angleBias if angleBias is not None else np.zeros(1, dtype=float)
-        self.curArm = curArm if curArm is not None else np.zeros(1, dtype=int)
-        self.curTurn = curTurn if curTurn is not None else np.zeros(1, dtype=int)
+        self.curArm = curArm if curArm is not None else 'spawned'
+        self.curTurn = curTurn if curTurn is not None else np.nan
 
 # Spawn fly in random valid (i.e., inside the Y-maze) starting location (matching empirical behavioral assay start)
 def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None):
@@ -167,13 +168,14 @@ def updatePos(fly):
         else:
             # Valid position, proceed as normal and reset out of bounds counter
             fly.OOB = 0
+            print('Accepted proposed position. Current position is', fly.curPos)
     else:
         # If out of bounds of Ymaze environment, reassign old position as current position
         fly.curPos = fly.lastPos.copy()
         fly.lastPos = fly.lastPosBackUp.copy()
         # Also report that fly would have been out of bounds
         fly.OOB += 1
-        print('Current position out of bounds, resetting to', fly.curPos)
+        print('Proposed position is out of bounds, resetting to', fly.curPos)
         
     return fly
 
@@ -211,6 +213,14 @@ def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
                 fly.curArm = 'l'
             else:
                 fly.curTurn = np.nan
+        # If current arm is none fly was just spawned, assign current arm correctly and omit a turn from being scored
+        elif fly.curArm == 'spawned':
+            if bArmPoly.contains_point(fly.curPos):
+                fly.curArm = 'b'
+            elif lArmPoly.contains_point(fly.curPos):
+                fly.curArm = 'l'
+            elif rArmPoly.contains_point(fly.curPos):
+                fly.curArm = 'r'
 
     return fly
 
@@ -221,17 +231,23 @@ def runExperiment(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySp
     fly = spawnFly(Ymaze, imgYmaze, flySpd, angleBias)
     # Set up array
     expmt = np.zeros([duration, 4])
-    # Change zeros to NaNs
-    expmt.fill(np.nan)
+    # Change turn zeros to NaNs
+    expmt[:,3].fill(np.nan)
+    # Set up temporary turn counter
+    tempturn = 0
 
     for frame in range(duration):
         chooseAngle(fly)
         updatePos(fly)
         updateTurn(fly, bArmPoly, lArmPoly, rArmPoly)
-        expmt[frame,0] = fly.curPos[0]
-        expmt[frame,1] = fly.curPos[1]
-        expmt[frame,2] += ~np.isnan(fly.curTurn)
+        expmt[frame,0] = fly.curPos[0].copy()
+        expmt[frame,1] = fly.curPos[1].copy()
+        tempturn = tempturn.copy() + ~np.isnan(fly.curTurn).copy()
+        expmt[frame,2] = tempturn.copy()
         expmt[frame,3] = fly.curTurn
+
+    # Compute summary statistics for simulated fly
+    fly.rBias = sum( expmt[~np.isnan(expmt[:,3]),3] ) / len(expmt[~np.isnan(expmt[:,3])]) 
 
     if visualize:
         plt.scatter( Ymaze[:,0], Ymaze[:,1],color='red' )
