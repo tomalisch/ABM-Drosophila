@@ -168,7 +168,7 @@ def updatePos(fly):
         else:
             # Valid position, proceed as normal and reset out of bounds counter
             fly.OOB = 0
-            print('Accepted proposed position. Current position is', fly.curPos)
+            print('Accepted proposed position ', fly.curPos)
     else:
         # If out of bounds of Ymaze environment, reassign old position as current position
         fly.curPos = fly.lastPos.copy()
@@ -226,28 +226,36 @@ def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
 
 ## Run, save, and visualize a fly experiment
 # Expmt is an array with N of duration rows
-# Expmt columns are X[0], Y[1], current Turn number [2], curent Turn direction (left: 0, right:1) [3]  
+# Expmt columns are X[0], Y[1], current Turn number [2], curent Turn direction (left: 0, right:1) [3], current absolute heading angle [4], current relative angular velocity angle [5] 
 def runExperiment(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, angleBias, visualize=False):
     fly = spawnFly(Ymaze, imgYmaze, flySpd, angleBias)
-    # Set up array
-    expmt = np.zeros([duration, 4])
+    # Set up experimental data array
+    expmt = np.zeros([duration, 6])
     # Change turn zeros to NaNs
-    expmt[:,3].fill(np.nan)
-    # Set up temporary turn counter
-    tempturn = 0
+    expmt[:,:].fill(np.nan)
 
-    for frame in range(duration):
+    # Set up temporary turn counter and frame counter
+    tempturn = 0
+    frame = 0
+
+    while frame < duration:
         chooseAngle(fly)
         updatePos(fly)
         updateTurn(fly, bArmPoly, lArmPoly, rArmPoly)
         expmt[frame,0] = fly.curPos[0].copy()
         expmt[frame,1] = fly.curPos[1].copy()
-        tempturn = tempturn.copy() + ~np.isnan(fly.curTurn).copy()
+        tempturn = tempturn + ~np.isnan(fly.curTurn).copy()
         expmt[frame,2] = tempturn.copy()
         expmt[frame,3] = fly.curTurn
+        expmt[frame,4] = fly.curAngleAbs
+        expmt[frame,5] = fly.curAngleRel
+
+        if fly.OOB == 0:
+            frame += 1
 
     # Compute summary statistics for simulated fly
-    fly.rBias = sum( expmt[~np.isnan(expmt[:,3]),3] ) / len(expmt[~np.isnan(expmt[:,3])]) 
+    if ~np.isnan( sum((expmt[:,3])) ):
+        fly.rBias = sum( expmt[~np.isnan(expmt[:,3]),3] ) / len(expmt[~np.isnan(expmt[:,3])]) 
 
     if visualize:
         plt.scatter( Ymaze[:,0], Ymaze[:,1],color='red' )
