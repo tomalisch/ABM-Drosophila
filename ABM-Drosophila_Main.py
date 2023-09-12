@@ -108,7 +108,7 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None):
     return fly
 
 # Choose a new angle for fly object at frame f based on angle distribution (and context-dependent variables v with weights wn)
-def chooseAngle(fly, mu=180, sigma=10, angleDistVarInc=1):
+def chooseAngle(fly, mu=180, sigma=5, angleDistVarInc=0.1):
 
     # Update fly object and move last frame's called angle from 'current' to 'last' parameter
     # Note that angle is heading angle relative to fly here
@@ -145,7 +145,7 @@ def updatePos(fly):
     if np.isnan(fly.lastAngleAbs):
         fly.lastAngleAbs = fly.lastAngleAbsBackUp
     # Update current absolute heading direction based on last absolute heading direction and current relative heading
-    fly.curAngleAbs = fly.lastAngleAbs + fly.curAngleRel
+    fly.curAngleAbs = ((fly.lastAngleAbs + fly.curAngleRel) % (2*math.pi))
 
     # Set previous current position as last position for purpose of calculating the next position
     fly.lastPosBackUp = fly.lastPos.copy()
