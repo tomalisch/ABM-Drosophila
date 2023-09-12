@@ -139,7 +139,8 @@ def updatePos(fly):
 
     # Determine last absolute heading direction
     fly.lastAngleAbsBackUp = fly.lastAngleAbs
-    fly.lastAngleAbs = findatan2( fly.curPos[0] - fly.lastPos[0], fly.curPos[1] - fly.lastPos[1] )
+    #fly.lastAngleAbs = findatan2( fly.curPos[0] - fly.lastPos[0], fly.curPos[1] - fly.lastPos[1] )
+    fly.lastAngleAbs = fly.curAngleAbs
     # If last and current position are the same, last absolute angle is NaN; reassign old heading angle
     if np.isnan(fly.lastAngleAbs):
         fly.lastAngleAbs = fly.lastAngleAbsBackUp
@@ -162,6 +163,8 @@ def updatePos(fly):
             # If position is not valid coordinate, reassign old position as current position
             fly.curPos = fly.lastPos.copy()
             fly.lastPos = fly.lastPosBackUp.copy()
+            fly.curAngleAbs = fly.lastAngleAbs
+            fly.lastAngleAbs = fly.lastAngleAbsBackUp
             # Also report that fly would have been out of bounds
             fly.OOB += 1
             print('Current position hit a wall, resetting to', fly.curPos)
@@ -173,6 +176,8 @@ def updatePos(fly):
         # If out of bounds of Ymaze environment, reassign old position as current position
         fly.curPos = fly.lastPos.copy()
         fly.lastPos = fly.lastPosBackUp.copy()
+        fly.curAngleAbs = fly.lastAngleAbs
+        fly.lastAngleAbs = fly.lastAngleAbsBackUp
         # Also report that fly would have been out of bounds
         fly.OOB += 1
         print('Proposed position is out of bounds, resetting to', fly.curPos)
