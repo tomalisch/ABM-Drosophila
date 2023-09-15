@@ -48,7 +48,7 @@ spdDist = [tmp1, tmp2]
 
 ## Initialize fly agent object w/ current position, last position, current heading angle, last heading angle, current and last speed, out of bounds counter, valid coordinates possible within the environment, flies' angular velocity bias, current and last arm turned into, current and last left or right turn made
 class flyAgent:
-    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None, angleBias=None, curArm=None, curTurn=None):
+    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None, angleBias=None, curArm=None, curTurn=None, rBias=None, seqEff=None):
         self.curPos = curPos if curPos is not None else np.zeros(2, dtype=int)
         self.lastPos = lastPos if lastPos is not None else np.zeros(2, dtype=int)
         self.lastPosBackUp = lastPosBackUp if lastPosBackUp is not None else np.zeros(2, dtype=int)
@@ -64,6 +64,8 @@ class flyAgent:
         self.angleBias = angleBias if angleBias is not None else np.zeros(1, dtype=float)
         self.curArm = curArm if curArm is not None else 'spawned'
         self.curTurn = curTurn if curTurn is not None else np.nan
+        self.rBias = rBias if rBias is not None else np.nan
+        self.seqEff = seqEff if seqEff is not None else np.nan
 
 # Spawn fly in random valid (i.e., inside the Y-maze) starting location (matching empirical behavioral assay start)
 def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None):
@@ -108,7 +110,7 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None):
     return fly
 
 # Choose a new angle for fly object at frame f based on angle distribution (and context-dependent variables v with weights wn)
-def chooseAngle(fly, mu=180, sigma=5, angleDistVarInc=0.1):
+def chooseAngle(fly, mu=180, sigma=10, angleDistVarInc=0.1):
 
     # Update fly object and move last frame's called angle from 'current' to 'last' parameter
     # Note that angle is heading angle relative to fly here
@@ -232,7 +234,7 @@ def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
 ## Run, save, and visualize a fly experiment
 # Expmt is an array with N of duration rows
 # Expmt columns are X[0], Y[1], current Turn number [2], curent Turn direction (left: 0, right:1) [3], current absolute heading angle [4], current relative angular velocity angle [5] 
-def runExperiment(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, angleBias, visualize=False):
+def runExperiment(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, angleBias, av_sigma, visualize=False):
     fly = spawnFly(Ymaze, imgYmaze, flySpd, angleBias)
     # Set up experimental data array
     expmt = np.zeros([duration, 6])
@@ -244,7 +246,7 @@ def runExperiment(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySp
     frame = 0
 
     while frame < duration:
-        chooseAngle(fly)
+        chooseAngle(fly, sigma=av_sigma)
         updatePos(fly)
         updateTurn(fly, bArmPoly, lArmPoly, rArmPoly)
         expmt[frame,0] = fly.curPos[0].copy()
@@ -259,11 +261,39 @@ def runExperiment(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySp
             frame += 1
 
     # Compute summary statistics for simulated fly
-    if ~np.isnan( sum((expmt[:,3])) ):
-        fly.rBias = sum( expmt[~np.isnan(expmt[:,3]),3] ) / len(expmt[~np.isnan(expmt[:,3])]) 
+    if np.nansum((expmt[:,3])) != 0:
+        fly.rBias = np.nansum( expmt[~np.isnan(expmt[:,3]),3] ) / len(expmt[~np.isnan(expmt[:,3])])
+        turnseq = list(enumerate(expmt[~np.isnan(expmt[:,3]),3]))
+        rrseqCounter = 0
+        llseqCounter = 0
+        for i in range(1,len(turnseq)):
+            rrseqCounter += (turnseq[:][i][1] * turnseq[:][i-1][1])
+            llseqCounter += (turnseq[:][i][1] + turnseq[:][i-1][1])==0
+        fly.seqEff = rrseqCounter/(len(turnseq)-1)
 
     if visualize:
         plt.scatter( Ymaze[:,0], Ymaze[:,1],color='red' )
         plt.plot( expmt[:,0], expmt[:,1] )
 
     return expmt, fly
+
+flyN = 72
+data = np.zeros([flyN,2])
+
+for flyID in range(flyN):
+    expmt1, fly1 = runExperiment(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration=30*60*120, flySpd=5, angleBias=0.5, av_sigma=10, visualize=False)
+
+    data[flyID, 0] = fly1.rBias
+    data[flyID, 1] = fly1.seqEff
+
+    # Clean up memory
+    del(expmt1, fly1)
+
+plt.figure(1)
+plt.hist(data[:,0])
+
+plt.figure(2)
+plt.hist(data[:,1])
+
+plt.figure(3)
+plt.scatter(data[:,0], data[:,1])
