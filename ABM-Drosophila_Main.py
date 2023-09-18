@@ -18,7 +18,6 @@ def findatan2(x,y):
     return float(arctangent2)
 
 ## Set up Y-maze map as binary array; size equals empirical data; each cell equals a pixel
-print('Initializing Y-maze map...')
 # Load picture of Y-maze outline
 img = Image.open('/Users/alisc/Github/ABM-Drosophila/Ymaze.png')
 # Convert image into array
@@ -156,7 +155,7 @@ def updatePos(fly):
     # Make sure that fly-relative heading angle is already converted to map-relative cardinal angle
     fly.curPos[0] = fly.lastPos[0] + fly.curSpd * math.cos(fly.curAngleAbs)
     fly.curPos[1] = fly.lastPos[1] + fly.curSpd * math.sin(fly.curAngleAbs)
-    print('Proposing position:', fly.curPos)
+    #print('Proposing position:', fly.curPos)
 
     # Check if current position is NOT out of bounds of the Ymaze environment
     if not any(fly.curPos >= np.shape(fly.validCoords)) and not any(fly.curPos < 0):
@@ -169,11 +168,11 @@ def updatePos(fly):
             fly.lastAngleAbs = fly.lastAngleAbsBackUp
             # Also report that fly would have been out of bounds
             fly.OOB += 1
-            print('Current position hit a wall, resetting to', fly.curPos)
+            #print('Current position hit a wall, resetting to', fly.curPos)
         else:
             # Valid position, proceed as normal and reset out of bounds counter
             fly.OOB = 0
-            print('Accepted proposed position ', fly.curPos)
+            #print('Accepted proposed position ', fly.curPos)
     else:
         # If out of bounds of Ymaze environment, reassign old position as current position
         fly.curPos = fly.lastPos.copy()
@@ -182,7 +181,7 @@ def updatePos(fly):
         fly.lastAngleAbs = fly.lastAngleAbsBackUp
         # Also report that fly would have been out of bounds
         fly.OOB += 1
-        print('Proposed position is out of bounds, resetting to', fly.curPos)
+        #print('Proposed position is out of bounds, resetting to', fly.curPos)
         
     return fly
 
@@ -234,7 +233,7 @@ def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
 ## Run, save, and visualize a fly experiment
 # Expmt is an array with N of duration rows
 # Expmt columns are X[0], Y[1], current Turn number [2], curent Turn direction (left: 0, right:1) [3], current absolute heading angle [4], current relative angular velocity angle [5] 
-def runExperiment(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, angleBias, av_sigma, visualize=False):
+def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, angleBias, av_sigma, visualize=False):
     fly = spawnFly(Ymaze, imgYmaze, flySpd, angleBias)
     # Set up experimental data array
     expmt = np.zeros([duration, 6])
@@ -271,29 +270,32 @@ def runExperiment(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySp
             llseqCounter += (turnseq[:][i][1] + turnseq[:][i-1][1])==0
         fly.seqEff = rrseqCounter/(len(turnseq)-1)
 
-    if visualize:
-        plt.scatter( Ymaze[:,0], Ymaze[:,1],color='red' )
-        plt.plot( expmt[:,0], expmt[:,1] )
-
     return expmt, fly
 
-flyN = 72
-data = np.zeros([flyN,2])
 
-for flyID in range(flyN):
-    expmt1, fly1 = runExperiment(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration=30*60*120, flySpd=5, angleBias=0.5, av_sigma=10, visualize=False)
+def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration=30*60*60, flySpd=5, angleBias=0.5, av_sigma=10, visualize=False, cleanup=True):
 
-    data[flyID, 0] = fly1.rBias
-    data[flyID, 1] = fly1.seqEff
+    data = np.zeros([flyN, 2])
 
-    # Clean up memory
-    del(expmt1, fly1)
+    for flyID in range(flyN):
+        expmt1, fly1 = assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration=duration, flySpd=flySpd, angleBias=angleBias, av_sigma=av_sigma)
 
-plt.figure(1)
-plt.hist(data[:,0])
+        data[flyID, 0] = fly1.rBias
+        data[flyID, 1] = fly1.seqEff
 
-plt.figure(2)
-plt.hist(data[:,1])
+        if cleanup:
+            # Clean up memory
+            del(expmt1, fly1)
 
-plt.figure(3)
-plt.scatter(data[:,0], data[:,1])
+    if visualize:
+
+        plt.figure(1)
+        plt.hist(data[:,0])
+
+        plt.figure(2)
+        plt.hist(data[:,1])
+
+        plt.figure(3)
+        plt.scatter(data[:,0], data[:,1])
+
+    return data
