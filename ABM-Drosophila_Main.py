@@ -17,6 +17,16 @@ def findatan2(x,y):
     arctangent2 = np.pi*(1.0-0.5*(1+np.sign(x))*(1-np.sign(y**2))-0.25*(2+np.sign(x))*np.sign(y))-np.sign(x*y)*np.arctan((np.abs(x)-np.abs(y))/(np.abs(x)+np.abs(y)))
     return float(arctangent2)
 
+## Define fly coordinates by body size (fly shape assumed circular)
+def circleCoords(r, x0, y0 ):
+    x_ = np.arange(x0 - r - 1, x0 + r + 1, dtype=int)
+    y_ = np.arange(y0 - r - 1, y0 + r + 1, dtype=int)
+    x, y = np.where((x_[:,np.newaxis] - x0)**2 + (y_ - y0)**2 <= r**2)
+    cCoords = []
+    for x, y in zip(x_[x], y_[y]):
+        cCoords.append([x, y])
+    return np.asarray(cCoords)
+
 ## Set up Y-maze map as binary array; size equals empirical data; each cell equals a pixel
 # Load picture of Y-maze outline
 img = Image.open('/Users/alisc/Github/ABM-Drosophila/Ymaze.png')
@@ -45,9 +55,9 @@ tmp1 = np.append(np.asarray(tmpSpdHist[0]),0)
 tmp2 = np.asarray(tmpSpdHist[1])
 spdDist = [tmp1, tmp2]
 
-## Initialize fly agent object w/ current position, last position, current heading angle, last heading angle, current and last speed, out of bounds counter, valid coordinates possible within the environment, flies' angular velocity bias, current and last arm turned into, current and last left or right turn made
+## Initialize fly agent object w/ current position, last position, current heading angle, last heading angle, current and last speed, out of bounds counter, valid coordinates possible within the environment, flies' angular velocity bias, current and last arm turned into, current and last left or right turn made, and body size (in px radius, default is 2=13 total pixels)
 class flyAgent:
-    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None, angleBias=None, curArm=None, curTurn=None, rBias=None, seqEff=None):
+    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None, angleBias=None, curArm=None, curTurn=None, rBias=None, seqEff=None, bodySize=None):
         self.curPos = curPos if curPos is not None else np.zeros(2, dtype=int)
         self.lastPos = lastPos if lastPos is not None else np.zeros(2, dtype=int)
         self.lastPosBackUp = lastPosBackUp if lastPosBackUp is not None else np.zeros(2, dtype=int)
@@ -65,14 +75,17 @@ class flyAgent:
         self.curTurn = curTurn if curTurn is not None else np.nan
         self.rBias = rBias if rBias is not None else np.nan
         self.seqEff = seqEff if seqEff is not None else np.nan
+        self.bodySize = bodySize if bodySize is not None else np.zeros(1, dtype=int)
 
 # Spawn fly in random valid (i.e., inside the Y-maze) starting location (matching empirical behavioral assay start)
-def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None):
+def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=2):
 
     # If starting position is not explicitly called, choose randomly based on binary map
     if startPos==None:
         startPos = list( Ymaze[ random.randint(0,len(Ymaze)-1) ] )
+
     fly = flyAgent()
+
     # Set 'last' position as random starting position
     fly.lastPos = startPos.copy()
     # Randomly (uniform) choose (absolute) heading angle at time of spawn
@@ -84,6 +97,8 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None):
     fly.curPos[1] = np.round(fly.lastPos[1] + fly.curSpd * math.sin(fly.curAngleAbs))
     # Assign starting relative heading direction to be 0; fly is moving straight ahead
     fly.curAngleRel = 0
+    # Set fly body size
+    fly.bodySize = bodySize
 
     ## Set up individual angle distribution including handedness bias as vector of length 359 w/ cumulative probability at angle entries
     # Handedness bias
@@ -157,33 +172,39 @@ def updatePos(fly):
     fly.curPos[1] = fly.lastPos[1] + fly.curSpd * math.sin(fly.curAngleAbs)
     #print('Proposing position:', fly.curPos)
 
-    # Check if current position is NOT out of bounds of the Ymaze environment
-    if not any(fly.curPos >= np.shape(fly.validCoords)) and not any(fly.curPos < 0):
-        # Check if current position is NOT within the maze itself
-        if not fly.validCoords[ fly.curPos[0], fly.curPos[1] ]:
-            # If position is not valid coordinate, reassign old position as current position
-            fly.curPos = fly.lastPos.copy()
-            fly.lastPos = fly.lastPosBackUp.copy()
-            fly.curAngleAbs = fly.lastAngleAbs
-            fly.lastAngleAbs = fly.lastAngleAbsBackUp
-            # Also report that fly would have been out of bounds
-            fly.OOB += 1
-            #print('Current position hit a wall, resetting to', fly.curPos)
-        else:
-            # Valid position, proceed as normal and reset out of bounds counter
-            fly.OOB = 0
-            #print('Accepted proposed position ', fly.curPos)
-    else:
-        # If out of bounds of Ymaze environment, reassign old position as current position
+    # Account for fly size for out-of-bounds checking with temporary variable
+    flyBodyCoords = circleCoords(fly.bodySize, fly.curPos[0], fly.curPos[1])
+
+    # Check if any body-size-dependent proposed fly positions is out of bounds of the Ymaze environment or inside a wall
+    if np.any(flyBodyCoords < 0) or np.any(flyBodyCoords >= np.asarray([YmazeXmax, YmazeYmax])):
+        # Fly outside of maze array bounds, reset porposed position and return early
         fly.curPos = fly.lastPos.copy()
         fly.lastPos = fly.lastPosBackUp.copy()
         fly.curAngleAbs = fly.lastAngleAbs
         fly.lastAngleAbs = fly.lastAngleAbsBackUp
         # Also report that fly would have been out of bounds
         fly.OOB += 1
-        #print('Proposed position is out of bounds, resetting to', fly.curPos)
-        
+        # Return early
+        print('out of bounds at ', flyBodyCoords)
+        return fly
+    
+    # Check if proposed position would cause fly to be inside a wall
+    if not all( fly.validCoords[ flyBodyCoords[:,0], flyBodyCoords[:,1] ]):
+        # Proposed position would be inside wall, reassign old position as current position
+        fly.curPos = fly.lastPos.copy()
+        fly.lastPos = fly.lastPosBackUp.copy()
+        fly.curAngleAbs = fly.lastAngleAbs
+        fly.lastAngleAbs = fly.lastAngleAbsBackUp
+        fly.OOB += 1
+        print('Hit wall at ', flyBodyCoords)
+        return fly
+    
+    # If both checks passed: Valid position, proceed as normal and reset out of bounds counter
+    fly.OOB = 0
+    #print('Accepted proposed position ', fly.curPos)   
     return fly
+
+
 
 def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
     # If current position was valid
@@ -273,9 +294,11 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
     return expmt, fly
 
 
-def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration=30*60*60, flySpd=5, angleBias=0.5, av_sigma=10, visualize=False, cleanup=True):
+def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, data = None, duration=30*60*60, flySpd=5, angleBias=0.5, av_sigma=10, visualize=False, cleanup=True):
 
-    data = np.zeros([flyN, 2])
+    # If data array not defined, create it
+    if data is None:
+        data = np.zeros([flyN, 2])
 
     for flyID in range(flyN):
         expmt1, fly1 = assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration=duration, flySpd=flySpd, angleBias=angleBias, av_sigma=av_sigma)
@@ -290,10 +313,10 @@ def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration=
     if visualize:
 
         plt.figure(1)
-        plt.hist(data[:,0])
+        plt.hist(data[:,0], stat='density', kde=True)
 
         plt.figure(2)
-        plt.hist(data[:,1])
+        plt.hist(data[:,1], stat='density', kde=True)
 
         plt.figure(3)
         plt.scatter(data[:,0], data[:,1])
