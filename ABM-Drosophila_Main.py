@@ -248,7 +248,7 @@ def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
 
 ## Run, save, and visualize a fly experiment
 # Expmt is an array with N of duration rows
-# Expmt columns are X[0], Y[1], current Turn number [2], curent Turn direction (left: 0, right:1) [3], current absolute heading angle [4], current relative angular velocity angle [5] 
+# Expmt columns are X[0], Y[1], current Turn number [2], curent Turn direction (left: 0, right:1) [3], current Turn arm start (0: bottom arm, 1: left, 2: right) [4], current absolute heading angle [5], current relative angular velocity angle [6] 
 def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, angleBias, av_sigma, bodySize):
     fly = spawnFly(Ymaze, imgYmaze, flySpd=flySpd, angleBias=angleBias, startPos=None, bodySize=bodySize)
     # Set up experimental data array
@@ -259,6 +259,7 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
     # Set up temporary turn counter and frame counter
     tempturn = 0
     frame = 0
+    cycle = 0
 
     while frame < duration:
         chooseAngle(fly, sigma=av_sigma)
@@ -273,8 +274,18 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
         expmt[frame,5] = fly.curAngleAbs
         expmt[frame,6] = fly.curAngleRel
 
+        # Keep track of overall cycles to read out if fly gets 'stuck'
+        cycle += 1
+
+        # If proposed position was accepted, advance frame
         if fly.OOB == 0:
             frame += 1
+
+        # If cycles exceed duration frames by 3 orders of magnitude, break out of while loop. Un-simulated frames will remain NaNs in expmt output
+        if cycle >= duration*1000:
+            print('ABM exceeded cycle allowance. Check output for NaNs.')
+            
+            return expmt, fly
 
     # Compute summary statistics for simulated fly
     if np.nansum((expmt[:,3])) != 0:
@@ -296,7 +307,7 @@ def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, data = No
     if data is None:
         data = np.zeros([flyN, duration, 7])
 
-    for flyID in tqdm(range(flyN), desc='Assaying fly', leave=True):
+    for flyID in tqdm(range(flyN), desc='Experiment progress', leave=True):
         expmt1, fly1 = assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration=duration, flySpd=flySpd, angleBias=angleBias, av_sigma=av_sigma, bodySize=bodySize)
 
         data[flyID, :, :] = expmt1
