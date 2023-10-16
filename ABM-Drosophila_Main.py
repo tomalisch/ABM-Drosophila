@@ -10,6 +10,7 @@ import seaborn as sns
 import random
 from PIL import Image
 import pandas as pd
+import scipy.io
 from tqdm.auto import tqdm
 
 
@@ -282,9 +283,9 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
             frame += 1
 
         # If cycles exceed duration frames by 3 orders of magnitude, break out of while loop. Un-simulated frames will remain NaNs in expmt output
-        if cycle >= duration*1000:
+        if cycle >= duration*100:
             print('ABM exceeded cycle allowance. Check output for NaNs.')
-            
+
             return expmt, fly
 
     # Compute summary statistics for simulated fly
