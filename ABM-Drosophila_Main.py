@@ -14,11 +14,6 @@ import scipy.io
 from tqdm.auto import tqdm
 
 
-## Define custom arctan2 function that outputs between 0 and 2pi; Output is not in Pi
-def findatan2(x,y):
-    arctangent2 = np.pi*(1.0-0.5*(1+np.sign(x))*(1-np.sign(y**2))-0.25*(2+np.sign(x))*np.sign(y))-np.sign(x*y)*np.arctan((np.abs(x)-np.abs(y))/(np.abs(x)+np.abs(y)))
-    return float(arctangent2)
-
 ## Define function that returns occupied fly coordinates by body size, given a centroid position (fly shape assumed circular)
 def circleCoords(r, x0, y0 ):
     x_ = np.arange(x0 - r - 1, x0 + r + 1, dtype=int)
@@ -110,15 +105,20 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=2
     return fly
 
 # Choose a new angle for fly object at frame f based on angle distribution (and context-dependent variables v with weights wn)
-def chooseAngle(fly, mu=180, sigma=10, angleDistVarInc=0.1):
+def chooseAngle(fly, mu=180, sigma=10, angleDistVarInc=0.1, brownMotion=False):
 
     # Update fly object and move last frame's called angle from 'current' to 'last' parameter
     # Note that angle is heading angle relative to fly here
     fly.lastAngleRel = fly.curAngleRel
     # Randomly choose angle and convert it to fly-relative heading angle (0 or 360 are straight ahead)
-    fly.curAngleRel = (np.random.normal( mu + ((fly.angleBias * 20) - 10) , sigma + (fly.OOB * angleDistVarInc) ) + 180)
-    if fly.curAngleRel >= 360:
-        fly.curAngleRel = abs(fly.curAngleRel - 360)
+    # If brownian motion mode, take a random integer heading
+    if brownMotion:
+        fly.curAngleRel = random.randint(0,359)
+    # If not brownian motion, take a random heading from the distribution centered on fly's angleBias with defined sigma
+    else:
+        fly.curAngleRel = (np.random.normal( mu + ((fly.angleBias * 20) - 10) , sigma + (fly.OOB * angleDistVarInc) ) + 180)[0]
+        if fly.curAngleRel >= 360:
+            fly.curAngleRel = abs(fly.curAngleRel - 360)
 
     # Convert relative angle to radians
     fly.curAngleRel = math.radians(fly.curAngleRel)
@@ -250,7 +250,7 @@ def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
 ## Run, save, and visualize a fly experiment
 # Expmt is an array with N of duration rows
 # Expmt columns are X[0], Y[1], current Turn number [2], curent Turn direction (left: 0, right:1) [3], current Turn arm start (0: bottom arm, 1: left, 2: right) [4], current absolute heading angle [5], current relative angular velocity angle [6] 
-def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, angleBias, av_sigma, bodySize):
+def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, angleBias, av_sigma, bodySize, brownMotion):
     fly = spawnFly(Ymaze, imgYmaze, flySpd=flySpd, angleBias=angleBias, startPos=None, bodySize=bodySize)
     # Set up experimental data array
     expmt = np.zeros([duration, 7])
@@ -263,7 +263,7 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
     cycle = 0
 
     while frame < duration:
-        chooseAngle(fly, sigma=av_sigma)
+        chooseAngle(fly, sigma=av_sigma, brownMotion=brownMotion)
         updatePos(fly)
         updateTurn(fly, bArmPoly, lArmPoly, rArmPoly)
         expmt[frame,0] = fly.curPos[0].copy()
@@ -302,14 +302,14 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
     return expmt, fly
 
 
-def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, data = None, duration=30*60*60, flySpd=5, angleBias=0.5,  av_sigma=10, bodySize=2, visualize=False, cleanup=True):
+def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, data = None, duration=30*60*60, flySpd=5, angleBias=0.5,  av_sigma=10, bodySize=2, visualize=False, cleanup=True, brownMotion=False):
 
     # If data array not defined, create it
     if data is None:
         data = np.zeros([flyN, duration, 7])
 
     for flyID in tqdm(range(flyN), desc='Experiment progress', leave=True):
-        expmt1, fly1 = assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration=duration, flySpd=flySpd, angleBias=angleBias, av_sigma=av_sigma, bodySize=bodySize)
+        expmt1, fly1 = assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration=duration, flySpd=flySpd, angleBias=angleBias, av_sigma=av_sigma, bodySize=bodySize, brownMotion=brownMotion)
 
         data[flyID, :, :] = expmt1
 
