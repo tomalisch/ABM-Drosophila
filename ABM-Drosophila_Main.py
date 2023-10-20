@@ -294,7 +294,7 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
         fly.rBias = np.nansum( expmt[~np.isnan(expmt[:,3]),3] ) / len(expmt[~np.isnan(expmt[:,3])])
         turnseq = list(enumerate(expmt[~np.isnan(expmt[:,3]),3]))
         # If fly made more than 1 turn
-        if turnseq > 1:
+        if len(turnseq) > 1:
             rrseqCounter = 0
             llseqCounter = 0
             for i in range(1,len(turnseq)):
