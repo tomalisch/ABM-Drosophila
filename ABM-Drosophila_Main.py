@@ -283,22 +283,27 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
             frame += 1
 
         # If cycles exceed duration frames by 3 orders of magnitude, break out of while loop. Un-simulated frames will remain NaNs in expmt output
-        if cycle >= duration*100:
+        if cycle >= duration*1000:
             print('ABM exceeded cycle allowance. Check output for NaNs.')
 
             return expmt, fly
 
-    # Compute summary statistics for simulated fly
+    ## Compute summary statistics for simulated fly
+    # Compute sequential effect of choosing right turn given a right turn was last made
     if np.nansum((expmt[:,3])) != 0:
         fly.rBias = np.nansum( expmt[~np.isnan(expmt[:,3]),3] ) / len(expmt[~np.isnan(expmt[:,3])])
         turnseq = list(enumerate(expmt[~np.isnan(expmt[:,3]),3]))
-        rrseqCounter = 0
-        llseqCounter = 0
-        for i in range(1,len(turnseq)):
-            rrseqCounter += (turnseq[:][i][1] * turnseq[:][i-1][1])
-            llseqCounter += (turnseq[:][i][1] + turnseq[:][i-1][1])==0
-        fly.seqEff = rrseqCounter/(len(turnseq)-1)
-
+        # If fly made more than 1 turn
+        if turnseq > 1:
+            rrseqCounter = 0
+            llseqCounter = 0
+            for i in range(1,len(turnseq)):
+                rrseqCounter += (turnseq[:][i][1] * turnseq[:][i-1][1])
+                llseqCounter += (turnseq[:][i][1] + turnseq[:][i-1][1])==0
+            fly.seqEff = rrseqCounter/(len(turnseq)-1)
+        else:
+        # If fly made 1 or fewer turns, set seqEff to NaN
+            fly.seqEff = np.nan
     return expmt, fly
 
 
