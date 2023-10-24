@@ -1,6 +1,7 @@
 ### Agent-based model of Drosophila decision-making
 
 ## Dependencies
+import os
 import math
 import numpy as np
 import matplotlib.pyplot as plt
