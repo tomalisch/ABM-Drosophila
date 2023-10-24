@@ -116,7 +116,7 @@ def chooseAngle(fly, mu=180, sigma=10, angleDistVarInc=0.1, brownMotion=False):
         fly.curAngleRel = random.randint(0,359)
     # If not brownian motion, take a random heading from the distribution centered on fly's angleBias with defined sigma
     else:
-        fly.curAngleRel = (np.random.normal( mu + ((fly.angleBias * 20) - 10) , sigma + (fly.OOB * angleDistVarInc) ) + 180)[0]
+        fly.curAngleRel = np.random.normal( mu + ((fly.angleBias * 20) - 10) , sigma + (fly.OOB * angleDistVarInc) ) + 180
         if fly.curAngleRel >= 360:
             fly.curAngleRel = abs(fly.curAngleRel - 360)
 
