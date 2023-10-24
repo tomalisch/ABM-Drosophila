@@ -11,6 +11,8 @@ import random
 from PIL import Image
 import pandas as pd
 import scipy.io
+import datetime
+import hdf5storage
 from tqdm.auto import tqdm
 
 
@@ -254,10 +256,12 @@ def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
 
     return fly
 
+
 ## Run, save, and visualize a fly experiment
 # Expmt is an array with N of duration rows
 # Expmt columns are X[0], Y[1], current Turn number [2], curent Turn direction (left: 0, right:1) [3], current Turn arm start (0: bottom arm, 1: left, 2: right) [4], current absolute heading angle [5], current relative angular velocity angle [6] 
 def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, angleBias, av_sigma, bodySize, brownMotion):
+
     fly = spawnFly(Ymaze, imgYmaze, flySpd=flySpd, angleBias=angleBias, startPos=None, bodySize=bodySize)
     # Set up experimental data array
     expmt = np.zeros([duration, 7])
@@ -331,3 +335,17 @@ def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, data = No
         return data
     else:
         return data, expmt1, fly1
+    
+
+# Function to save data array as .mat file  
+def saveExperiment(data, filename):
+
+    # Check if filename is a string and includes '.mat' at the end; else create failsafe filename
+    if not isinstance(filename, str):
+        filename = 'dataABM_' + str(datetime.date.today())
+    if not filename.endswith('.mat'):
+        filename = filename + '.mat'
+
+    hdf5storage.write({filename:data}, '.', filename, matlab_compatible=True, store_python_metadata=True, compress=True)
+    print(f'Saved data as {filename} in {os.getcwd()}/')
+    
