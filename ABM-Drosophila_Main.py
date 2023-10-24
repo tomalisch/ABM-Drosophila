@@ -44,7 +44,7 @@ bArmPoly = Path([(YmazeXmax/3, -50), (YmazeXmax/1.5, -50), (YmazeXmax/1.5, Ymaze
 
 ## Initialize fly agent object w/ current position, last position, current heading angle, last heading angle, current and last speed, out of bounds counter, valid coordinates possible within the environment, flies' angular velocity bias, current and last arm turned into, current and last left or right turn made, and body size (in px radius, default is 2=13 total pixels)
 class flyAgent:
-    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None, angleBias=None, curArm=None, curTurn=None, rBias=None, seqEff=None, bodySize=None, startArmTurn=None):
+    def __init__(self, curPos=None, lastPos=None, lastPosBackUp=None, curAngleAbs=None, curAngleRel=None, lastAngleAbs=None, lastAngleAbsBackUp=None, lastAngleRel=None, curSpd=None, lastSpd=None, OOB=None, validCoords=None, angleBias=None, curArm=None, curTurn=None, nTurn=None, rBias=None, seqEff=None, bodySize=None, startArmTurn=None):
         self.curPos = curPos if curPos is not None else np.zeros(2, dtype=int)
         self.lastPos = lastPos if lastPos is not None else np.zeros(2, dtype=int)
         self.lastPosBackUp = lastPosBackUp if lastPosBackUp is not None else np.zeros(2, dtype=int)
@@ -60,6 +60,7 @@ class flyAgent:
         self.angleBias = angleBias if angleBias is not None else np.zeros(1, dtype=float)
         self.curArm = curArm if curArm is not None else 'spawned'
         self.curTurn = curTurn if curTurn is not None else np.nan
+        self.nTurn = nTurn if nTurn is not None else np.nan
         self.rBias = rBias if rBias is not None else np.nan
         self.seqEff = seqEff if seqEff is not None else np.nan
         self.bodySize = bodySize if bodySize is not None else np.zeros(1, dtype=int)
@@ -203,10 +204,12 @@ def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
         if fly.curArm == 'b':
             if lArmPoly.contains_point(fly.curPos):
                 fly.curTurn = 0
+                fly.nTurn += 1
                 fly.curArm = 'l'
                 fly.startArmTurn = 0
             elif rArmPoly.contains_point(fly.curPos):
                 fly.curTurn = 1
+                fly.nTurn += 1
                 fly.curArm = 'r'
                 fly.startArmTurn = 0
             # If current position between arms or still in current arm, set current turn to None but maintain current arm
@@ -216,10 +219,12 @@ def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
         elif fly.curArm == 'l':
             if rArmPoly.contains_point(fly.curPos):
                 fly.curTurn = 0
+                fly.nTurn += 1
                 fly.curArm = 'r'
                 fly.startArmTurn = 1
             elif bArmPoly.contains_point(fly.curPos):
                 fly.curTurn = 1
+                fly.nTurn += 1
                 fly.curArm ='b'
                 fly.startArmTurn = 1
             else:
@@ -228,10 +233,12 @@ def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
         elif fly.curArm == 'r':
             if bArmPoly.contains_point(fly.curPos):
                 fly.curTurn = 0
+                fly.nTurn += 1
                 fly.curArm = 'b'
                 fly.startArmTurn = 2
             elif lArmPoly.contains_point(fly.curPos):
                 fly.curTurn = 1
+                fly.nTurn += 1
                 fly.curArm = 'l'
                 fly.startArmTurn = 2
             else:
@@ -257,8 +264,7 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
     # Change turn zeros to NaNs
     expmt[:,:].fill(np.nan)
 
-    # Set up temporary turn counter and frame counter
-    tempturn = 0
+    # Set up temporary experimental frame and total simulation cycle counters
     frame = 0
     cycle = 0
 
@@ -268,8 +274,7 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
         updateTurn(fly, bArmPoly, lArmPoly, rArmPoly)
         expmt[frame,0] = fly.curPos[0].copy()
         expmt[frame,1] = fly.curPos[1].copy()
-        tempturn = tempturn + ~np.isnan(fly.curTurn).copy()
-        expmt[frame,2] = tempturn.copy()
+        expmt[frame,2] = fly.nTurn
         expmt[frame,3] = fly.curTurn
         expmt[frame,4] = fly.startArmTurn
         expmt[frame,5] = fly.curAngleAbs
