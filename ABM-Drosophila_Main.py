@@ -63,7 +63,7 @@ class flyAgent:
         self.angleBias = angleBias if angleBias is not None else np.zeros(1, dtype=float)
         self.curArm = curArm if curArm is not None else 'spawned'
         self.curTurn = curTurn if curTurn is not None else np.nan
-        self.nTurn = nTurn if nTurn is not None else np.nan
+        self.nTurn = nTurn if nTurn is not None else np.zeros(1, dtype=int)
         self.rBias = rBias if rBias is not None else np.nan
         self.seqEff = seqEff if seqEff is not None else np.nan
         self.bodySize = bodySize if bodySize is not None else np.zeros(1, dtype=int)
