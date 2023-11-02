@@ -347,6 +347,7 @@ def saveExperiment(data, filename):
     if not filename.endswith('.mat'):
         filename = filename + '.mat'
 
-    hdf5storage.write({filename:data}, '.', filename, matlab_compatible=True, store_python_metadata=True, compress=True)
+    # MATLAB field will just be 'data' to allow loading into workspace
+    hdf5storage.write({'data':data}, '.', filename, matlab_compatible=True, store_python_metadata=True, compress=True)
     print(f'Saved data as {filename} in {os.getcwd()}/')
     
