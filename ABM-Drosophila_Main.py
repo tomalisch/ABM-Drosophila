@@ -19,6 +19,7 @@ from tqdm.auto import tqdm
 
 ## Define function that returns occupied fly coordinates by body size, given a centroid position (fly shape assumed circular)
 def circleCoords(r, x0, y0 ):
+
     x_ = np.arange(x0 - r - 1, x0 + r + 1, dtype=int)
     y_ = np.arange(y0 - r - 1, y0 + r + 1, dtype=int)
     x, y = np.where((x_[:,np.newaxis] - x0)**2 + (y_ - y0)**2 <= r**2)
@@ -26,6 +27,16 @@ def circleCoords(r, x0, y0 ):
     for x, y in zip(x_[x], y_[y]):
         cCoords.append([x, y])
     return np.asarray(cCoords)
+ 
+ 
+## Define function that returns absolute angle in radians between two consecutive points
+# Note that p1 is the first point and p2 is the second point
+# Output is in radians from (0,2pi)
+def getAngleAbs(p1, p2):
+
+    angleAbs = np.mod( math.atan2(p2[1]-p1[1] , p2[0]-p1[0]), 2*np.pi)
+    return angleAbs
+
 
 ## Set up Y-maze map as binary array; size equals empirical data; each cell equals a pixel
 # Load picture of Y-maze outline
@@ -33,7 +44,7 @@ img = Image.open('/Users/alisc/Github/ABM-Drosophila/Ymaze.png')
 # Convert image into array
 imgarray = np.asarray(img)
 imgYmaze = (imgarray[:,:,0] == 255).astype(bool)
-# Invert Ymaze so 1s are area and 0s are out of bounds
+# Invert Ymaze so 1s are area and 0s are walls/out of bounds
 imgYmaze = ~imgYmaze
 # Transform binary Ymaze image into a coordinate array with the correctorientation
 Ymaze = np.transpose( (np.rot90(np.flipud(imgYmaze == 1))).nonzero() )
@@ -129,6 +140,40 @@ def chooseAngle(fly, mu=180, sigma=10, angleDistVarInc=0.1, brownMotion=False):
 
     return fly
 
+# Detect whether a wall is in range and returns angle and distance of closest wall to fly. Radius is in times bodysize.
+def detectWall(fly, detectRadius=1.5):
+
+    # Use circleCoords to draw sensory boundary around centroid at current location
+    detectCoords = circleCoords(fly.bodySize * detectRadius, fly.curPos[0], fly.curPos[1])
+
+    # Return array of coordinates within detectCoords that are 0 w/ respect to global valid coordinates (detect a wall)
+    wallCoords = detectCoords[ fly.validCoords[ detectCoords[:,0], detectCoords[:,1] ] == 0 ]
+
+    # If exactly one wall coordinate was found in detection radius:
+    if len(wallCoords) == 1:
+        # Determine shortest wall distance from fly centroid and calculate absolute angle of that point
+        wallDistances = np.linalg.norm(wallCoords - fly.curPos)
+        wallCoordsMinDist = wallCoords[ wallDistances==np.min(wallDistances)][0]
+        wallAngle = getAngleAbs(fly.curPos, wallCoordsMinDist)
+        wallDist = np.linalg.norm(wallCoordsMinDist - fly.curPos)
+
+    # If more than one wall coordinate was detected
+    elif len(wallCoords) > 1:
+        # If more than one coordinate found, iterate over resulting angles and choose point that results in the angle closest to current absolute heading angle
+        wallDistances = np.linalg.norm(wallCoords - fly.curPos, axis=1)
+        wallCoordsMinDist = wallCoords[ wallDistances==np.min(wallDistances)][0]
+        wallAngle = getAngleAbs(fly.curPos, wallCoordsMinDist)
+        wallDist = np.linalg.norm(wallCoordsMinDist - fly.curPos)
+
+    # If no wall was in detection range
+    else:
+        wallAngle = None
+        wallCoordsMinDist = None
+        wallDist = None
+
+    return wallAngle, wallDist, wallCoordsMinDist
+
+
 # Choose speed based on previously chosen new angle (speed empirically depends on angle)
 def chooseSpd(fly, mu=5, sigma=1, spdVarInc=0.1):
 
@@ -141,7 +186,7 @@ def chooseSpd(fly, mu=5, sigma=1, spdVarInc=0.1):
     return fly
 
 # Update new fly position based on chosen angle and speed
-def updatePos(fly):
+def updatePos(fly, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
 
     # Determine last absolute heading direction
     fly.lastAngleAbsBackUp = fly.lastAngleAbs
@@ -150,6 +195,14 @@ def updatePos(fly):
     # If last and current position are the same, last absolute angle is NaN; reassign old heading angle
     if np.isnan(fly.lastAngleAbs):
         fly.lastAngleAbs = fly.lastAngleAbsBackUp
+
+    # If fly should wall follow, adjust mean of heading direction distribution to be mixed between straight ahead & closest wall angle (weighted by wallBias)
+    # Note that wall 'attraction' increases as distance to wall decreases
+    if wallFollowing:
+        wallAngle, wallDist, wallCoordsMinDist = detectWall(fly, detectRadius=detectRadius)
+        # Take the wallBias weighted mean of wallAngle and last heading angle to update proposed angle before adding relative heading angle
+        fly.lastAngleAbs = ( (wallBias * wallAngle) + ((1 - wallBias) * fly.lastAngleAbs) ) / 2 
+
     # Update current absolute heading direction based on last absolute heading direction and current relative heading
     fly.curAngleAbs = ((fly.lastAngleAbs + fly.curAngleRel) % (2*math.pi))
 
@@ -261,7 +314,7 @@ def updateTurn(fly, bArmPoly, lArmPoly, rArmPoly):
 ## Run, save, and visualize a fly experiment
 # Expmt is an array with N of duration rows
 # Expmt columns are X[0], Y[1], current Turn number [2], curent Turn direction (left: 0, right:1) [3], current Turn arm start (0: bottom arm, 1: left, 2: right) [4], current absolute heading angle [5], current relative angular velocity angle [6] 
-def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, angleBias, av_sigma, bodySize, brownMotion):
+def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, angleBias, av_sigma, bodySize, brownMotion, wallFollowing, wallBias, detectRadius):
 
     fly = spawnFly(Ymaze, imgYmaze, flySpd=flySpd, angleBias=angleBias, startPos=None, bodySize=bodySize)
     # Set up experimental data array
@@ -275,7 +328,7 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
 
     while frame < duration:
         chooseAngle(fly, sigma=av_sigma, brownMotion=brownMotion)
-        updatePos(fly)
+        updatePos(fly, wallFollowing=wallFollowing, wallBias=wallBias, detectRadius=detectRadius)
         updateTurn(fly, bArmPoly, lArmPoly, rArmPoly)
         expmt[frame,0] = fly.curPos[0].copy()
         expmt[frame,1] = fly.curPos[1].copy()
@@ -299,7 +352,7 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
             return expmt, fly
 
     ## Compute summary statistics for simulated fly
-    # Compute sequential effect of choosing right turn given a right turn was last made
+    # Compute sequential effect of choosing right turn given last turn decision was right turn as well
     if np.nansum((expmt[:,3])) != 0:
         fly.rBias = np.nansum( expmt[~np.isnan(expmt[:,3]),3] ) / len(expmt[~np.isnan(expmt[:,3])])
         turnseq = list(enumerate(expmt[~np.isnan(expmt[:,3]),3]))
@@ -317,14 +370,14 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
     return expmt, fly
 
 
-def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, data = None, duration=30*60*60, flySpd=5, angleBias=0.5,  av_sigma=10, bodySize=2, visualize=False, cleanup=True, brownMotion=False):
+def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, data = None, duration=30*60*60, flySpd=5, angleBias=0.5,  av_sigma=10, bodySize=2, visualize=False, cleanup=True, brownMotion=False, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
 
     # If data array not defined, create it
     if data is None:
         data = np.zeros([flyN, duration, 7])
 
     for flyID in tqdm(range(flyN), desc='Experiment progress', leave=True):
-        expmt1, fly1 = assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration=duration, flySpd=flySpd, angleBias=angleBias, av_sigma=av_sigma, bodySize=bodySize, brownMotion=brownMotion)
+        expmt1, fly1 = assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration=duration, flySpd=flySpd, angleBias=angleBias, av_sigma=av_sigma, bodySize=bodySize, brownMotion=brownMotion, wallFollowing=wallFollowing, wallBias=wallBias, detectRadius=detectRadius)
 
         data[flyID, :, :] = expmt1
 
