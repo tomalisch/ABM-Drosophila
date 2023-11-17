@@ -136,7 +136,7 @@ def chooseAngle(fly, mu=180, sigma=10, angleDistVarInc=0.1, brownMotion=False):
             fly.curAngleRel = abs(fly.curAngleRel - 360)
 
     # Convert relative angle to radians
-    fly.curAngleRel = math.radians(fly.curAngleRel)
+    fly.curAngleRel = math.radians(np.squeeze(fly.curAngleRel))
 
     return fly
 
@@ -147,13 +147,13 @@ def detectWall(fly, detectRadius=1.5):
     detectCoords = circleCoords(fly.bodySize * detectRadius, fly.curPos[0], fly.curPos[1])
 
     # Return array of coordinates within detectCoords that are 0 w/ respect to global valid coordinates (detect a wall)
-    wallCoords = detectCoords[ fly.validCoords[ detectCoords[:,0], detectCoords[:,1] ] == 0 ]
+    wallCoords = detectCoords[ fly.validCoords[ detectCoords[:,0]-1, detectCoords[:,1]-1 ] == 0 ]
 
     # If exactly one wall coordinate was found in detection radius:
     if len(wallCoords) == 1:
         # Determine shortest wall distance from fly centroid and calculate absolute angle of that point
         wallDistances = np.linalg.norm(wallCoords - fly.curPos)
-        wallCoordsMinDist = wallCoords[ wallDistances==np.min(wallDistances)][0]
+        wallCoordsMinDist = np.squeeze(wallCoords[ wallDistances==np.min(wallDistances)])
         wallAngle = getAngleAbs(fly.curPos, wallCoordsMinDist)
         wallDist = np.linalg.norm(wallCoordsMinDist - fly.curPos)
 
@@ -161,6 +161,7 @@ def detectWall(fly, detectRadius=1.5):
     elif len(wallCoords) > 1:
         # If more than one coordinate found, iterate over resulting angles and choose point that results in the angle closest to current absolute heading angle
         wallDistances = np.linalg.norm(wallCoords - fly.curPos, axis=1)
+        # TODO: don't just take the first but compute lowest angle difference to choose from coords
         wallCoordsMinDist = wallCoords[ wallDistances==np.min(wallDistances)][0]
         wallAngle = getAngleAbs(fly.curPos, wallCoordsMinDist)
         wallDist = np.linalg.norm(wallCoordsMinDist - fly.curPos)
@@ -200,8 +201,11 @@ def updatePos(fly, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
     # Note that wall 'attraction' increases as distance to wall decreases
     if wallFollowing:
         wallAngle, wallDist, wallCoordsMinDist = detectWall(fly, detectRadius=detectRadius)
-        # Take the wallBias weighted mean of wallAngle and last heading angle to update proposed angle before adding relative heading angle
-        fly.lastAngleAbs = ( (wallBias * wallAngle) + ((1 - wallBias) * fly.lastAngleAbs) ) / 2 
+
+        # If wall was successfully detected:
+        if wallAngle is not None:
+            # Take the wallBias weighted mean of wallAngle and last heading angle to update proposed angle before adding relative heading angle
+            fly.lastAngleAbs = ( (wallBias * wallAngle) + ((1 - wallBias) * fly.lastAngleAbs) ) / 2 
 
     # Update current absolute heading direction based on last absolute heading direction and current relative heading
     fly.curAngleAbs = ((fly.lastAngleAbs + fly.curAngleRel) % (2*math.pi))
@@ -332,7 +336,7 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
         updateTurn(fly, bArmPoly, lArmPoly, rArmPoly)
         expmt[frame,0] = fly.curPos[0].copy()
         expmt[frame,1] = fly.curPos[1].copy()
-        expmt[frame,2] = fly.nTurn
+        expmt[frame,2] = np.squeeze(fly.nTurn)
         expmt[frame,3] = fly.curTurn
         expmt[frame,4] = fly.startArmTurn
         expmt[frame,5] = fly.curAngleAbs
