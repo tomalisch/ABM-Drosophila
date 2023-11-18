@@ -146,8 +146,11 @@ def detectWall(fly, detectRadius=1.5):
     # Use circleCoords to draw sensory boundary around centroid at current location
     detectCoords = circleCoords(fly.bodySize * detectRadius, fly.curPos[0], fly.curPos[1])
 
+    # Prune coordinates that extend outside the arena
+    detectCoords = detectCoords[ np.array(detectCoords[:,0] < fly.validCoords.shape[0]) * np.array(detectCoords[:,1] < fly.validCoords.shape[1])  ]
+
     # Return array of coordinates within detectCoords that are 0 w/ respect to global valid coordinates (detect a wall)
-    wallCoords = detectCoords[ fly.validCoords[ detectCoords[:,0]-1, detectCoords[:,1]-1 ] == 0 ]
+    wallCoords = detectCoords[ fly.validCoords[ detectCoords[:,0], detectCoords[:,1] ] == 0 ]
 
     # If exactly one wall coordinate was found in detection radius:
     if len(wallCoords) == 1:
@@ -204,8 +207,8 @@ def updatePos(fly, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
 
         # If wall was successfully detected:
         if wallAngle is not None:
-            # Take the wallBias weighted mean of wallAngle and last heading angle to update proposed angle before adding relative heading angle
-            fly.lastAngleAbs = ( (wallBias * wallAngle) + ((1 - wallBias) * fly.lastAngleAbs) ) / 2 
+            # Take the wallBias weighted wallAngle and last heading angle to update proposed angle before adding relative heading angle later
+            fly.lastAngleAbs = (wallBias * wallAngle) + ((1 - wallBias) * fly.lastAngleAbs)
 
     # Update current absolute heading direction based on last absolute heading direction and current relative heading
     fly.curAngleAbs = ((fly.lastAngleAbs + fly.curAngleRel) % (2*math.pi))
