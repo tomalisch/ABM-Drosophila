@@ -20,8 +20,8 @@ from tqdm.auto import tqdm
 ## Define function that returns occupied fly coordinates by body size, given a centroid position (fly shape assumed circular)
 def circleCoords(r, x0, y0 ):
 
-    x_ = np.arange(x0 - r - 1, x0 + r + 1, dtype=int)
-    y_ = np.arange(y0 - r - 1, y0 + r + 1, dtype=int)
+    x_ = np.arange( np.ceil(x0 - r - 1), np.ceil(x0 + r + 1), dtype=int )
+    y_ = np.arange( np.ceil(y0 - r - 1), np.ceil(y0 + r + 1), dtype=int )
     x, y = np.where((x_[:,np.newaxis] - x0)**2 + (y_ - y0)**2 <= r**2)
     cCoords = []
     for x, y in zip(x_[x], y_[y]):
@@ -81,7 +81,7 @@ class flyAgent:
         self.startArmTurn = startArmTurn if startArmTurn is not None else np.nan
 
 # Spawn fly in random valid (i.e., inside the Y-maze) starting location (matching empirical behavioral assay start)
-def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=2):
+def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=5):
 
     # If starting position is not explicitly called, choose randomly based on binary map
     if startPos==None:
@@ -147,10 +147,10 @@ def detectWall(fly, detectRadius=1.5):
     detectCoords = circleCoords(fly.bodySize * detectRadius, fly.curPos[0], fly.curPos[1])
 
     # Prune coordinates that extend outside the arena
-    detectCoords = detectCoords[ np.array(detectCoords[:,0] < fly.validCoords.shape[0]) * np.array(detectCoords[:,1] < fly.validCoords.shape[1])  ]
+    detectCoords_pruned = detectCoords[ np.array(detectCoords[:,0] < fly.validCoords.shape[0]) * np.array(detectCoords[:,1] < fly.validCoords.shape[1]) * np.array( detectCoords[:,0] > 0 ) * np.array( detectCoords[:,1] > 0) ]
 
     # Return array of coordinates within detectCoords that are 0 w/ respect to global valid coordinates (detect a wall)
-    wallCoords = detectCoords[ fly.validCoords[ detectCoords[:,0], detectCoords[:,1] ] == 0 ]
+    wallCoords = detectCoords_pruned[ fly.validCoords[ detectCoords_pruned[:,0], detectCoords_pruned[:,1] ] == 0 ]
 
     # If exactly one wall coordinate was found in detection radius:
     if len(wallCoords) == 1:
@@ -377,7 +377,7 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
     return expmt, fly
 
 
-def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, data = None, duration=30*60*60, flySpd=5, angleBias=0.5,  av_sigma=10, bodySize=2, visualize=False, cleanup=True, brownMotion=False, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
+def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, data = None, duration=30*60*60, flySpd=5, angleBias=0.5,  av_sigma=10, bodySize=5, visualize=False, cleanup=True, brownMotion=False, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
 
     # If data array not defined, create it
     if data is None:
