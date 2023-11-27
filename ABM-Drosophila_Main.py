@@ -17,7 +17,7 @@ import hdf5storage
 from tqdm.auto import tqdm
 
 
-## Define function that returns occupied fly coordinates by body size, given a centroid position (fly shape assumed circular)
+# Define function that returns occupied fly coordinates by body size, given a centroid position (fly shape assumed circular)
 def circleCoords(r, x0, y0 ):
 
     x_ = np.arange( np.ceil(x0 - r - 1), np.ceil(x0 + r + 1), dtype=int )
@@ -29,13 +29,27 @@ def circleCoords(r, x0, y0 ):
     return np.asarray(cCoords)
  
  
-## Define function that returns absolute angle in radians between two consecutive points
+# Define function that returns absolute angle in radians between two consecutive points
 # Note that p1 is the first point and p2 is the second point
 # Output is in radians from (0,2pi)
 def getAngleAbs(p1, p2):
 
     angleAbs = np.mod( math.atan2(p2[1]-p1[1] , p2[0]-p1[0]), 2*np.pi)
     return angleAbs
+
+# Define function that returns the weighted mean angle based on relative quadrants and similarity
+# Note that angleWeight applies to first angle, second angle weight is 1-angleWeight
+def getWeightedAngleMean(ang1, ang2, angleWeight):
+
+    # Take the average smallest angle (from -pi to pi)
+    wmAngle = np.arctan2( (np.sin(ang1)*angleWeight)  +  (np.sin(ang2)*(1-angleWeight)), (np.cos(ang1)*angleWeight)  +  (np.cos(ang2)*(1-angleWeight)) )
+
+    # Change angle back into (0 to 2pi) space
+    if wmAngle<0:
+        wmAngle = math.pi + (wmAngle/2)
+    wmAngle = wmAngle*2
+
+    return wmAngle
 
 
 ## Set up Y-maze map as binary array; size equals empirical data; each cell equals a pixel
@@ -196,6 +210,8 @@ def updatePos(fly, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
     fly.lastAngleAbsBackUp = fly.lastAngleAbs
     #fly.lastAngleAbs = findatan2( fly.curPos[0] - fly.lastPos[0], fly.curPos[1] - fly.lastPos[1] )
     fly.lastAngleAbs = fly.curAngleAbs
+    print('lastAngleAbs:', fly.lastAngleAbs)
+    print('computed:', getAngleAbs(fly.lastPos,fly.curPos))
     # If last and current position are the same, last absolute angle is NaN; reassign old heading angle
     if np.isnan(fly.lastAngleAbs):
         fly.lastAngleAbs = fly.lastAngleAbsBackUp
