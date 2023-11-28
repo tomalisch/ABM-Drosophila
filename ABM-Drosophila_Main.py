@@ -28,7 +28,6 @@ def circleCoords(r, x0, y0 ):
         cCoords.append([x, y])
     return np.asarray(cCoords)
  
- 
 # Define function that returns absolute angle in radians between two consecutive points
 # Note that p1 is the first point and p2 is the second point
 # Output is in radians from (0,2pi)
@@ -210,8 +209,6 @@ def updatePos(fly, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
     fly.lastAngleAbsBackUp = fly.lastAngleAbs
     #fly.lastAngleAbs = findatan2( fly.curPos[0] - fly.lastPos[0], fly.curPos[1] - fly.lastPos[1] )
     fly.lastAngleAbs = fly.curAngleAbs
-    print('lastAngleAbs:', fly.lastAngleAbs)
-    print('computed:', getAngleAbs(fly.lastPos,fly.curPos))
     # If last and current position are the same, last absolute angle is NaN; reassign old heading angle
     if np.isnan(fly.lastAngleAbs):
         fly.lastAngleAbs = fly.lastAngleAbsBackUp
@@ -224,7 +221,7 @@ def updatePos(fly, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
         # If wall was successfully detected:
         if wallAngle is not None:
             # Take the wallBias weighted wallAngle and last heading angle to update proposed angle before adding relative heading angle later
-            fly.lastAngleAbs = (wallBias * wallAngle) + ((1 - wallBias) * fly.lastAngleAbs)
+            fly.lastAngleAbs = getWeightedAngleMean(wallAngle, fly.lastAngleAbs, wallBias)
 
     # Update current absolute heading direction based on last absolute heading direction and current relative heading
     fly.curAngleAbs = ((fly.lastAngleAbs + fly.curAngleRel) % (2*math.pi))
