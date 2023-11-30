@@ -146,7 +146,7 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=5
     return fly
 
 # Choose a new angle for fly object at frame f based on angle distribution (and context-dependent variables v with weights wn)
-def chooseAngle(fly, mu=180, sigma=10, angleDistVarInc=0.1, brownMotion=False):
+def chooseAngle(fly, mu=180, av_sigma=10, angleDistVarInc=0.1, brownMotion=False):
 
     # Update fly object and move last frame's called angle from 'current' to 'last' parameter
     # Note that angle is heading angle relative to fly here
@@ -157,7 +157,7 @@ def chooseAngle(fly, mu=180, sigma=10, angleDistVarInc=0.1, brownMotion=False):
         fly.curAngleRel = random.randint(0,359)
     # If not brownian motion, take a random heading from the distribution centered on fly's angleBias with defined sigma
     else:
-        fly.curAngleRel = np.random.normal( mu + ((fly.angleBias * 20) - 10) , sigma + (fly.OOB * angleDistVarInc) ) + 180
+        fly.curAngleRel = np.random.normal( mu + ((fly.angleBias * 20) - 10) , av_sigma + (fly.OOB * angleDistVarInc) ) + 180
         if fly.curAngleRel >= 360:
             fly.curAngleRel = abs(fly.curAngleRel - 360)
 
@@ -214,13 +214,13 @@ def detectWall(fly, detectRadius=1.5):
 
 
 # Choose speed based on previously chosen new angle (speed empirically depends on angle)
-def chooseSpd(fly, mu=5, sigma=1, spdVarInc=0.1):
+def chooseSpd(fly, mu=5, av_sigma=1, spdVarInc=0.1):
 
     # Set just utilized speed as last speed
     fly.lastSpd = fly.curSpd
     # Choose new speed from speed distributions relative to current angle heading
     # Note: Currently sampling from Gaussian
-    fly.curSpd = np.random.normal( mu, sigma + (fly.OOB * spdVarInc) )
+    fly.curSpd = np.random.normal( mu, av_sigma + (fly.OOB * spdVarInc) )
 
     return fly
 
@@ -261,7 +261,7 @@ def updatePos(fly, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
     flyBodyCoords = circleCoords(fly.bodySize, fly.curPos[0], fly.curPos[1])
 
     # Check if any body-size-dependent proposed fly positions is out of bounds of the Ymaze environment or inside a wall
-    if np.any(flyBodyCoords < 0) or np.any(flyBodyCoords >= np.asarray([YmazeXmax, YmazeYmax])):
+    if (np.any(flyBodyCoords < 0) or np.any(flyBodyCoords >= np.asarray([YmazeXmax, YmazeYmax]))) or (not all( fly.validCoords[ flyBodyCoords[:,0], flyBodyCoords[:,1] ])):
         # Fly outside of maze array bounds, reset porposed position and return early
         fly.curPos = fly.lastPos.copy()
         fly.lastPos = fly.lastPosBackUp.copy()
@@ -269,19 +269,10 @@ def updatePos(fly, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
         fly.lastAngleAbs = fly.lastAngleAbsBackUp
         # Also report that fly would have been out of bounds
         fly.OOB += 1
+        if fly.OOB > 1000:
+            print('position',fly.lastPos, 'stuck with angle', fly.curAngleAbs, 'with rel angle pull', fly.curAngleRel, 'into proposed angle', fly.curPos)
         # Return early
         # print('out of bounds at ', fly.curPos)
-        return fly
-    
-    # Check if proposed position would cause fly to be inside a wall
-    if not all( fly.validCoords[ flyBodyCoords[:,0], flyBodyCoords[:,1] ]):
-        # Proposed position would be inside wall, reassign old position as current position
-        fly.curPos = fly.lastPos.copy()
-        fly.lastPos = fly.lastPosBackUp.copy()
-        fly.curAngleAbs = fly.lastAngleAbs
-        fly.lastAngleAbs = fly.lastAngleAbsBackUp
-        fly.OOB += 1
-        # print('Hit wall at ', fly.curPos)
         return fly
     
     # If both checks passed: Valid position, proceed as normal and reset out of bounds counter
@@ -369,7 +360,7 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
     cycle = 0
 
     while frame < duration:
-        chooseAngle(fly, sigma=av_sigma, brownMotion=brownMotion)
+        chooseAngle(fly, av_sigma=av_sigma, brownMotion=brownMotion)
         updatePos(fly, wallFollowing=wallFollowing, wallBias=wallBias, detectRadius=detectRadius)
 
         # Keep track of overall cycles to read out if fly got 'stuck' and put an upper bound on runtime
