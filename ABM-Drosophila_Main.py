@@ -26,15 +26,24 @@ def circleCoords(r, x0, y0 ):
     cCoords = []
     for x, y in zip(x_[x], y_[y]):
         cCoords.append([x, y])
+
     return np.asarray(cCoords)
  
-# Define function that returns absolute angle in radians between two consecutive points
+# Define function that returns absolute angle in radians between two consecutive points (w/ respect to X-axis)
 # Note that p1 is the first point and p2 is the second point
 # Output is in radians from (0,2pi)
 def getAngleAbs(p1, p2):
 
     angleAbs = np.mod( math.atan2(p2[1]-p1[1] , p2[0]-p1[0]), 2*np.pi)
+
     return angleAbs
+
+# Compute difference of two (radians) angles
+def getAngleDiff(ang1, ang2):
+
+    angleDiff = 180 - abs(abs(np.rad2deg(ang1) - np.rad2deg(ang2)) - 180)
+
+    return angleDiff
 
 # Define function that returns the weighted mean angle based on relative quadrants and similarity
 # Note that angleWeight applies to first angle, second angle weight is 1-angleWeight
@@ -45,14 +54,15 @@ def getWeightedAngleMean(ang1, ang2, angleWeight):
 
     # Change angle back into (0 to 2pi) space
     if wmAngle<0:
-        wmAngle = math.pi + (wmAngle/2)
-    wmAngle = wmAngle*2
+        wmAngle = (math.pi + (wmAngle/2) ) * 2
 
     return wmAngle
 
 
 ## Set up Y-maze map as binary array; size equals empirical data; each cell equals a pixel
 # Load picture of Y-maze outline
+# Note that real Y-maze arms are 3.6mm wide; 120px here; 0.03px/mm
+# Real Drosophila are ~2mm wide, 10px here; 0.2px/mm
 img = Image.open('/Users/alisc/Github/ABM-Drosophila/Ymaze.png')
 # Convert image into array
 imgarray = np.asarray(img)
@@ -107,6 +117,9 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=5
 
     # Randomly (uniform) choose (absolute) heading angle at time of spawn
     fly.curAngleAbs = math.radians(random.randint(0,359))
+
+    # Assign last absolute angle to be equal to randomly chosen current one (to prevent 0 angle for wall angle detection)
+    fly.lastAngleAbs = fly.curAngleAbs
 
     # Set speed to 1 pixel for heading computation
     fly.curSpd = flySpd
@@ -176,19 +189,28 @@ def detectWall(fly, detectRadius=1.5):
     # If more than one wall coordinate was detected
     elif len(wallCoords) > 1:
         # If more than one coordinate found, iterate over resulting angles and choose point that results in the angle closest to current absolute heading angle
+        wallAngles = np.zeros(len(wallCoords))
+        angleDiff = np.zeros(len(wallCoords))
         wallDistances = np.linalg.norm(wallCoords - fly.curPos, axis=1)
-        # TODO: don't just take the first but compute lowest angle difference to choose from coords
-        wallCoordsMinDist = wallCoords[ wallDistances==np.min(wallDistances)][0]
-        wallAngle = getAngleAbs(fly.curPos, wallCoordsMinDist)
-        wallDist = np.linalg.norm(wallCoordsMinDist - fly.curPos)
+        # Iterate through wall coordinates and find those with lowest angle difference to current absolute heading direction
+        for wd in range(0,len(wallDistances)):
+            wallAngles[wd] = getAngleAbs(fly.curPos, wallCoords[wd])
+            angleDiff[wd] = getAngleDiff(fly.lastAngleAbs, wallAngles[wd])
+
+        # Assign returned wallAngle as the angle with the smallest difference to current heading direction (If true for multiple angles, take the first one)
+        minAngleDiffID = np.where(angleDiff==min(angleDiff))[0]
+        wallAngle = wallAngles[ minAngleDiffID ][0]
+        # Same for wall coordinate distance
+        wallDist = wallDistances[ minAngleDiffID][0]
 
     # If no wall was in detection range
     else:
         wallAngle = None
         wallCoordsMinDist = None
         wallDist = None
+        return wallAngle, wallDist
 
-    return wallAngle, wallDist, wallCoordsMinDist
+    return wallAngle, wallDist
 
 
 # Choose speed based on previously chosen new angle (speed empirically depends on angle)
@@ -216,7 +238,7 @@ def updatePos(fly, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
     # If fly should wall follow, adjust mean of heading direction distribution to be mixed between straight ahead & closest wall angle (weighted by wallBias)
     # Note that wall 'attraction' increases as distance to wall decreases
     if wallFollowing:
-        wallAngle, wallDist, wallCoordsMinDist = detectWall(fly, detectRadius=detectRadius)
+        wallAngle, wallDist = detectWall(fly, detectRadius=detectRadius)
 
         # If wall was successfully detected:
         if wallAngle is not None:
@@ -349,20 +371,20 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
     while frame < duration:
         chooseAngle(fly, sigma=av_sigma, brownMotion=brownMotion)
         updatePos(fly, wallFollowing=wallFollowing, wallBias=wallBias, detectRadius=detectRadius)
-        updateTurn(fly, bArmPoly, lArmPoly, rArmPoly)
-        expmt[frame,0] = fly.curPos[0].copy()
-        expmt[frame,1] = fly.curPos[1].copy()
-        expmt[frame,2] = np.squeeze(fly.nTurn)
-        expmt[frame,3] = fly.curTurn
-        expmt[frame,4] = fly.startArmTurn
-        expmt[frame,5] = fly.curAngleAbs
-        expmt[frame,6] = fly.curAngleRel
 
-        # Keep track of overall cycles to read out if fly gets 'stuck'
+        # Keep track of overall cycles to read out if fly got 'stuck' and put an upper bound on runtime
         cycle += 1
 
-        # If proposed position was accepted, advance frame
+        # If proposed position was accepted, update turn and log frame data, then advance frame
         if fly.OOB == 0:
+            updateTurn(fly, bArmPoly, lArmPoly, rArmPoly)
+            expmt[frame,0] = fly.curPos[0].copy()
+            expmt[frame,1] = fly.curPos[1].copy()
+            expmt[frame,2] = np.squeeze(fly.nTurn)
+            expmt[frame,3] = fly.curTurn
+            expmt[frame,4] = fly.startArmTurn
+            expmt[frame,5] = fly.curAngleAbs
+            expmt[frame,6] = fly.curAngleRel
             frame += 1
 
         # If cycles exceed duration frames by 3 orders of magnitude, break out of while loop. Un-simulated frames will remain NaNs in expmt output
