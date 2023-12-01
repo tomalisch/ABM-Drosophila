@@ -111,8 +111,12 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=3
 
     if startPos==None:
         startPos = list( Ymaze[ random.randint(0,len(Ymaze)-1) ] )
-        while if (np.any(flyBodyCoords < 0) or np.any(flyBodyCoords >= np.asarray([YmazeXmax, YmazeYmax]))) or (not all( fly.validCoords[ flyBodyCoords[:,0], flyBodyCoords[:,1] ])):
-
+        # Determine occupied coordinates based on starting position
+        flyBodyCoords = circleCoords(bodySize, startPos[0], startPos[1])
+        # While fly body would be out of bounds, repeat starting position determination
+        while (np.any(flyBodyCoords < 0) or np.any(flyBodyCoords >= np.asarray([YmazeXmax, YmazeYmax]))) or (not all( fly.validCoords[ flyBodyCoords[:,0], flyBodyCoords[:,1] ])):
+            startPos = list( Ymaze[ random.randint(0,len(Ymaze)-1) ] )
+            flyBodyCoords = circleCoords(bodySize, startPos[0], startPos[1])
 
     fly = flyAgent()
 
