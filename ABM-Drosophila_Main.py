@@ -106,6 +106,24 @@ class flyAgent:
 # Spawn fly in random valid (i.e., inside the Y-maze) starting location (matching empirical behavioral assay start)
 def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=30):
 
+    # Assign class
+    fly = flyAgent()
+
+    # Assign starting relative heading direction to be 0; fly is moving straight ahead
+    fly.curAngleRel = 0
+
+    # Set fly body size
+    fly.bodySize = bodySize
+
+    # Handedness bias
+    fly.angleBias = angleBias
+
+    # Save representation of Ymaze array in fly object for wall detection
+    tmpSize = np.shape(imgYmaze)
+    fly.validCoords = np.zeros([tmpSize[1], tmpSize[0]],dtype=bool)
+    for cell in range(0,len(Ymaze)):
+        fly.validCoords[tuple(Ymaze[cell])] = True
+
     # If starting position is not explicitly called, choose randomly based on binary map
     # If body size is set, repeat procedure until viable spot is found
 
@@ -117,8 +135,6 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=3
         while (np.any(flyBodyCoords < 0) or np.any(flyBodyCoords >= np.asarray([YmazeXmax, YmazeYmax]))) or (not all( fly.validCoords[ flyBodyCoords[:,0], flyBodyCoords[:,1] ])):
             startPos = list( Ymaze[ random.randint(0,len(Ymaze)-1) ] )
             flyBodyCoords = circleCoords(bodySize, startPos[0], startPos[1])
-
-    fly = flyAgent()
 
     # Set 'last' position as random starting position
     fly.lastPos = startPos.copy()
@@ -135,21 +151,6 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=3
     # Assign current position based on valid last position and randomly chosen absolute heading direction
     fly.curPos[0] = np.round(fly.lastPos[0] + fly.curSpd * math.cos(fly.curAngleAbs))
     fly.curPos[1] = np.round(fly.lastPos[1] + fly.curSpd * math.sin(fly.curAngleAbs))
-
-    # Assign starting relative heading direction to be 0; fly is moving straight ahead
-    fly.curAngleRel = 0
-
-    # Set fly body size
-    fly.bodySize = bodySize
-
-    # Handedness bias
-    fly.angleBias = angleBias
-
-    # Save representation of Ymaze array in fly object for wall detection
-    tmpSize = np.shape(imgYmaze)
-    fly.validCoords = np.zeros([tmpSize[1], tmpSize[0]],dtype=bool)
-    for cell in range(0,len(Ymaze)):
-        fly.validCoords[tuple(Ymaze[cell])] = True
 
     return fly
 
