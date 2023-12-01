@@ -62,7 +62,7 @@ def getWeightedAngleMean(ang1, ang2, angleWeight):
 ## Set up Y-maze map as binary array; size equals empirical data; each cell equals a pixel
 # Load picture of Y-maze outline
 # Note that real Y-maze arms are 3.6mm wide; 120px here; 0.03px/mm
-# Real Drosophila are ~2mm wide, 10px here; 0.2px/mm
+# Real Drosophila are ~2mm wide, 60px here to match arena's ~0.03px/mm ratio
 img = Image.open('/Users/alisc/Github/ABM-Drosophila/Ymaze.png')
 # Convert image into array
 imgarray = np.asarray(img)
@@ -104,11 +104,15 @@ class flyAgent:
         self.startArmTurn = startArmTurn if startArmTurn is not None else np.nan
 
 # Spawn fly in random valid (i.e., inside the Y-maze) starting location (matching empirical behavioral assay start)
-def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=5):
+def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=30):
 
     # If starting position is not explicitly called, choose randomly based on binary map
+    # If body size is set, repeat procedure until viable spot is found
+
     if startPos==None:
         startPos = list( Ymaze[ random.randint(0,len(Ymaze)-1) ] )
+        while if (np.any(flyBodyCoords < 0) or np.any(flyBodyCoords >= np.asarray([YmazeXmax, YmazeYmax]))) or (not all( fly.validCoords[ flyBodyCoords[:,0], flyBodyCoords[:,1] ])):
+
 
     fly = flyAgent()
 
@@ -225,7 +229,7 @@ def chooseSpd(fly, mu=5, av_sigma=1, spdVarInc=0.1):
     return fly
 
 # Update new fly position based on chosen angle and speed
-def updatePos(fly, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
+def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5):
 
     # Determine last absolute heading direction
     fly.lastAngleAbsBackUp = fly.lastAngleAbs
@@ -233,6 +237,7 @@ def updatePos(fly, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
     fly.lastAngleAbs = fly.curAngleAbs
     # If last and current position are the same, last absolute angle is NaN; reassign old heading angle
     if np.isnan(fly.lastAngleAbs):
+        print('last Angle should not be 0!')
         fly.lastAngleAbs = fly.lastAngleAbsBackUp
 
     # If fly should wall follow, adjust mean of heading direction distribution to be mixed between straight ahead & closest wall angle (weighted by wallBias)
@@ -263,14 +268,14 @@ def updatePos(fly, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
     # Check if any body-size-dependent proposed fly positions is out of bounds of the Ymaze environment or inside a wall
     if (np.any(flyBodyCoords < 0) or np.any(flyBodyCoords >= np.asarray([YmazeXmax, YmazeYmax]))) or (not all( fly.validCoords[ flyBodyCoords[:,0], flyBodyCoords[:,1] ])):
         # Fly outside of maze array bounds, reset porposed position and return early
+        if fly.OOB > 1000:
+           print('stuck position',fly.lastPos, 'with angle:', fly.curAngleAbs, 'with rel angle pull:', fly.curAngleRel, 'into proposed position:', fly.curPos)
         fly.curPos = fly.lastPos.copy()
         fly.lastPos = fly.lastPosBackUp.copy()
         fly.curAngleAbs = fly.lastAngleAbs
         fly.lastAngleAbs = fly.lastAngleAbsBackUp
         # Also report that fly would have been out of bounds
         fly.OOB += 1
-        if fly.OOB > 1000:
-            print('position',fly.lastPos, 'stuck with angle', fly.curAngleAbs, 'with rel angle pull', fly.curAngleRel, 'into proposed angle', fly.curPos)
         # Return early
         # print('out of bounds at ', fly.curPos)
         return fly
@@ -403,7 +408,7 @@ def assayFly(Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, duration, flySpd, an
     return expmt, fly
 
 
-def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, data = None, duration=30*60*60, flySpd=5, angleBias=0.5,  av_sigma=10, bodySize=5, visualize=False, cleanup=True, brownMotion=False, wallFollowing=True, wallBias=0.5, detectRadius=1.5):
+def runExperiment(flyN, Ymaze, imgYmaze, bArmPoly, lArmPoly, rArmPoly, data = None, duration=30*60*60, flySpd=5, angleBias=0.5,  av_sigma=10, bodySize=30, visualize=False, cleanup=True, brownMotion=False, wallFollowing=True, wallBias=0.1, detectRadius=1.5):
 
     # If data array not defined, create it
     if data is None:
