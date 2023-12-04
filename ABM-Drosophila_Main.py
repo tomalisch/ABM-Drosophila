@@ -155,7 +155,7 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=3
     return fly
 
 # Choose a new angle for fly object at frame f based on angle distribution (and context-dependent variables v with weights wn)
-def chooseAngle(fly, mu=180, av_sigma=10, angleDistVarInc=0.1, brownMotion=False):
+def chooseAngle(fly, mu=180, av_sigma=10, angleDistVarInc=1.0, brownMotion=False):
 
     # Update fly object and move last frame's called angle from 'current' to 'last' parameter
     # Note that angle is heading angle relative to fly here
