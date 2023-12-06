@@ -124,9 +124,21 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=3
     for cell in range(0,len(Ymaze)):
         fly.validCoords[tuple(Ymaze[cell])] = True
 
+    # Adjust validCoords to account for bodySize (some coordinates are not valid because fly body would extend into wall)
+    # Iterate over all coordinates once and create boolean mask of actually valid coordinates
+    if fly.bodySize > 1:
+        for x in range(fly.bodySize,len(fly.validCoords[:,0])):
+            for y in range(fly.bodySize,len(fly.validCoords[0,:])):
+                tmpCoords = circleCoords(fly.bodySize, x, y)
+                tmpValid = np.zeros(0)
+                for tmp in range(0,len(tmpCoords[:,0])-1):
+                    tmpValid = np.append(tmpValid, fly.validCoords[tuple(tuple(tmpCoords)[tmp])])
+                fly.validCoords[x,y] = np.all(tmpValid)
+
+
+
     # If starting position is not explicitly called, choose randomly based on binary map
     # If body size is set, repeat procedure until viable spot is found
-
     if startPos==None:
         startPos = list( Ymaze[ random.randint(0,len(Ymaze)-1) ] )
         # Determine occupied coordinates based on starting position
@@ -154,8 +166,16 @@ def spawnFly(Ymaze, imgYmaze, flySpd=5, angleBias=0.5, startPos=None, bodySize=3
 
     return fly
 
+# Check whether all entries in an array of coordinates are within bounds
+# Note that coordArray is an array of shape (c,2) with c number of x,y coordinates
+# Note that validArray is a boolean array with row, columns reflecting coordinate IDs /re coordArray
+def isCoordValid(coordArray, validArray):
+
+    # Return 1 if invalid, bool invert for nomenclature's sake
+    return not ( (np.any(coordArray < 0) or np.any(coordArray >= np.asarray([np.shape(validArray)[0], np.shape(validArray)[1]]))) or (not all( validArray[ coordArray[:,0], coordArray[:,1] ])) )
+
 # Choose a new angle for fly object at frame f based on angle distribution (and context-dependent variables v with weights wn)
-def chooseAngle(fly, mu=180, av_sigma=10, angleDistVarInc=1.0, brownMotion=False):
+def chooseAngle(fly, mu=180, av_sigma=10, angleDistVarInc=10, brownMotion=False):
 
     # Update fly object and move last frame's called angle from 'current' to 'last' parameter
     # Note that angle is heading angle relative to fly here
@@ -221,6 +241,54 @@ def detectWall(fly, detectRadius=1.5):
 
     return wallAngle, wallDist
 
+# Detect accessible coordinates around the fly, and their respective angles and distances
+def detectOpenCoords(fly, detectRadius=1.5):
+
+    # Use circleCoords to draw sensory boundary around centroid at current location
+    detectCoords = circleCoords(fly.bodySize * detectRadius, fly.curPos[0], fly.curPos[1])
+
+    # Prune coordinates that extend outside the arena
+    detectCoords_pruned = detectCoords[ np.array(detectCoords[:,0] < fly.validCoords.shape[0]) * np.array(detectCoords[:,1] < fly.validCoords.shape[1]) * np.array( detectCoords[:,0] > 0 ) * np.array( detectCoords[:,1] > 0) ]
+
+    # Return array of coordinates within detectCoords that are 1 w/ respect to global valid coordinates (open coordinates)
+    openCoords = detectCoords_pruned[ fly.validCoords[ detectCoords_pruned[:,0], detectCoords_pruned[:,1] ] == 1 ]
+
+    # If exactly one open coordinate was found in detection radius:
+    if len(openCoords) == 1:
+        # Determine shortest open distance from fly centroid and calculate absolute angle of that point
+        openDistances = np.linalg.norm(openCoords - fly.curPos)
+        openCoordsMinDist = np.squeeze(openCoords[ openDistances==np.min(openDistances)])
+        openAngle = getAngleAbs(fly.curPos, openCoordsMinDist)
+        openDist = np.linalg.norm(openCoordsMinDist - fly.curPos)
+
+    # If more than one open coordinate was detected
+    elif len(openCoords) > 1:
+        # If more than one open coordinate found, iterate over resulting angles and choose point that results in the angle closest to current absolute heading angle
+        openAngles = np.zeros(len(openCoords))
+        angleDiff = np.zeros(len(openCoords))
+        openDistances = np.linalg.norm(openCoords - fly.curPos, axis=1)
+        # Iterate through open coordinates and find those with lowest angle difference to current absolute heading direction
+        for od in range(0,len(openDistances)):
+            openAngles[od] = getAngleAbs(fly.curPos, openCoords[od])
+            angleDiff[od] = getAngleDiff(fly.lastAngleAbs, openAngles[od])
+
+        # Assign returned openAngle as the angle with the smallest difference to current heading direction (If true for multiple angles, take the first one)
+        minAngleDiffID = np.where(angleDiff==min(angleDiff))[0]
+        openAngle = openAngles[ minAngleDiffID ][0]
+        # Same for open coordinate distance
+        openDist = openDistances[ minAngleDiffID][0]
+
+    # If no open coordinate was in detection range
+    else:
+        print('ERROR: No available coordinate reachable')
+        openAngle = None
+        openCoordsMinDist = None
+        openDist = None
+        return openAngle, openDist
+
+
+    return openAngle, openDist
+
 
 # Choose speed based on previously chosen new angle (speed empirically depends on angle)
 def chooseSpd(fly, mu=5, av_sigma=1, spdVarInc=0.1):
@@ -255,6 +323,10 @@ def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5):
             # Take the wallBias weighted wallAngle and last heading angle to update proposed angle before adding relative heading angle later
             fly.lastAngleAbs = getWeightedAngleMean(wallAngle, fly.lastAngleAbs, wallBias)
 
+    # If fly proposed an out of bounds coordinate on the last cycle already, update last absolute heading angle to an open coordinate
+    if fly.OOB > 0:
+        fly.lastAngleAbs,_ = detectOpenCoords(fly, detectRadius=detectRadius)
+
     # Update current absolute heading direction based on last absolute heading direction and current relative heading
     fly.curAngleAbs = ((fly.lastAngleAbs + fly.curAngleRel) % (2*math.pi))
 
@@ -274,7 +346,7 @@ def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5):
     if (np.any(flyBodyCoords < 0) or np.any(flyBodyCoords >= np.asarray([YmazeXmax, YmazeYmax]))) or (not all( fly.validCoords[ flyBodyCoords[:,0], flyBodyCoords[:,1] ])):
         # Fly outside of maze array bounds, reset porposed position and return early
         if fly.OOB > 1000:
-           print('stuck position',fly.lastPos, 'with angle:', fly.curAngleAbs, 'with rel angle pull:', fly.curAngleRel, 'into proposed position:', fly.curPos)
+           print('ERROR: Stuck at position',fly.lastPos, 'with angle:', fly.curAngleAbs, 'with rel angle pull:', fly.curAngleRel, 'into proposed position:', fly.curPos)
         fly.curPos = fly.lastPos.copy()
         fly.lastPos = fly.lastPosBackUp.copy()
         fly.curAngleAbs = fly.lastAngleAbs
