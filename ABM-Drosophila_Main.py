@@ -41,12 +41,13 @@ def circumferenceCoords(r, x, y, xmax=626, ymax=562):
     for p in range(0, (r*10)):
         circumCoords.append( (r*np.cos(p*radBetween),r*np.sin(p*radBetween)) )
     circumCoords = np.asarray(circumCoords)
-    circumCoords[:,0] = circumCoords[:,0] + y
-    circumCoords[:,1] = circumCoords[:,1] + x
+    # Bring circumference coordinates into current frame of reference (current fly position)
+    circumCoords += [x, y]
     circumCoords = circumCoords[ (circumCoords[:,0]<xmax) * (circumCoords[:,1]<ymax) ]
-    circumCoords = np.unique( np.ceil(circumCoords) , axis=1)
+    circumCoords = np.ceil( circumCoords).astype(int)
+    circumCoords = np.unique( circumCoords , axis=0)
 
-    return circumCoords.astype(int)
+    return circumCoords
 
 # Define function that returns absolute angle in radians between two consecutive points (w/ respect to X-axis)
 # Note that p1 is the first point and p2 is the second point
@@ -282,21 +283,20 @@ def detectOpenCoords(fly, openRadius):
         openAngles_sorted = openAngles[np.argsort(angleDiff)]
 
         # Iterate through sorted coordinates and determine whether fly occupancy would be valid (including its body size)
-        for i in range(0, len(openCoords_sorted)):
+        for i in range(0, len(openCoords_sorted[:,0])):
             tmp = circleCoords(fly.bodySize, openCoords_sorted[i][0], openCoords_sorted[i][1])
             rows = tmp[:,0]
             cols = tmp[:,1]
             if all(fly.validCoords[rows, cols]):
                 openAngle = openAngles_sorted[i]
 
-                return openAngle, openCoords_sorted[i]
+                return openAngle, openCoords_sorted[i,:]
 
-    # If no open coordinate was in detection range
-    else:
-        print('ERROR: No available coordinate reachable')
-        openAngle = None
-        openCoords = None
-        return openAngle, openCoords
+    # If no open coordinate was in detection range, i.e., no open Angle and Coordinate was returned before:
+    print('ERROR: No available coordinate reachable')
+    openAngle = np.NaN
+    openCoords = np.NaN
+    return openAngle, openCoords
 
 
 # Choose speed based on previously chosen new angle (speed empirically depends on angle)
@@ -311,7 +311,7 @@ def chooseSpd(fly, mu=5, av_sigma=1, spdVarInc=0.1):
     return fly
 
 # Update new fly position based on chosen angle and speed
-def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5, openRadius=10):
+def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5, openRadius=fly.curSpd):
 
     # Determine last absolute heading direction
     fly.lastAngleAbsBackUp = fly.lastAngleAbs
@@ -336,17 +336,12 @@ def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5, openRadiu
         fly.curAngleAbs, fly.curPos = detectOpenCoords(fly, openRadius=openRadius)
         #print('fly OOB, open Angle is', fly.curAngleAbs)
 
-    # Set previous current position as last position for purpose of calculating the next position
-    fly.lastPosBackUp = fly.lastPos.copy()
-    fly.lastPos = fly.curPos.copy()
-
-    # If last and current position are the same, last absolute angle is NaN; reassign old heading angle
-    if np.isnan(fly.lastAngleAbs):
-        print('last Angle should not be 0!')
-        fly.lastAngleAbs = fly.lastAngleAbsBackUp
-
-    # Make sure that fly-relative heading angle is already converted to map-relative cardinal angle
     elif fly.OOB == 0:
+
+        # Set previous current position as last position for purpose of calculating the next position
+        fly.lastPosBackUp = fly.lastPos.copy()
+        fly.lastPos = fly.curPos.copy()
+
         fly.curPos[0] = fly.lastPos[0] + fly.curSpd * math.cos(fly.curAngleAbs)
         fly.curPos[1] = fly.lastPos[1] + fly.curSpd * math.sin(fly.curAngleAbs)
         #print('Proposing position:', fly.curPos)
