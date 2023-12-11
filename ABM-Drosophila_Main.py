@@ -311,7 +311,7 @@ def chooseSpd(fly, mu=5, av_sigma=1, spdVarInc=0.1):
     return fly
 
 # Update new fly position based on chosen angle and speed
-def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5, openRadius=fly.curSpd):
+def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5, openRadius=5):
 
     # Determine last absolute heading direction
     fly.lastAngleAbsBackUp = fly.lastAngleAbs
