@@ -31,7 +31,7 @@ def circleCoords(r, x0, y0, xmax=626, ymax=562):
     return np.asarray(cCoords)
 
 # Define function that returns the outside coordinates of a search radius around the [x0, y0] point
-def circumferenceCoords(r, x0, y0, xmax=626, ymax=562):
+def circumferenceCoords(r, x, y, xmax=626, ymax=562):
 
     # Make sure radius is integer
     r = int(r)
@@ -40,8 +40,9 @@ def circumferenceCoords(r, x0, y0, xmax=626, ymax=562):
     circumCoords = []
     for p in range(0, (r*10)):
         circumCoords.append( (r*np.cos(p*radBetween),r*np.sin(p*radBetween)) )
-    
-    circumCoords = circumCoords + np.array( [x0,y0] )
+    circumCoords = np.asarray(circumCoords)
+    circumCoords[:,0] = circumCoords[:,0] + y
+    circumCoords[:,1] = circumCoords[:,1] + x
     circumCoords = circumCoords[ (circumCoords[:,0]<xmax) * (circumCoords[:,1]<ymax) ]
     circumCoords = np.unique( np.ceil(circumCoords) , axis=1)
 
@@ -247,10 +248,10 @@ def detectWall(fly, detectRadius=1.5):
     return wallAngle, wallDist
 
 # Detect accessible coordinates around the fly, and their respective angles and distances
-def detectOpenCoords(fly, detectRadius):
+def detectOpenCoords(fly, openRadius):
 
     # Use circleCoords to draw sensory boundary around centroid at current location
-    detectCoords = circumferenceCoords(detectRadius, fly.curPos[0], fly.curPos[1])
+    detectCoords = circumferenceCoords(openRadius, fly.curPos[0], fly.curPos[1])
 
     # Prune coordinates that extend outside the arena
     detectCoords_pruned = detectCoords[ np.array(detectCoords[:,0] < fly.validCoords.shape[0]) * np.array(detectCoords[:,1] < fly.validCoords.shape[1]) * np.array( detectCoords[:,0] > 0 ) * np.array( detectCoords[:,1] > 0) ]
@@ -263,7 +264,7 @@ def detectOpenCoords(fly, detectRadius):
         # Determine shortest open distance from fly centroid and calculate absolute angle of that point
         openAngle = getAngleAbs(fly.curPos, openCoords)
 
-        return openAngle
+        return openAngle, openCoords
 
     # If more than one open coordinate was detected
     elif len(openCoords) > 1:
@@ -282,20 +283,20 @@ def detectOpenCoords(fly, detectRadius):
 
         # Iterate through sorted coordinates and determine whether fly occupancy would be valid (including its body size)
         for i in range(0, len(openCoords_sorted)):
-            tmp = circleCoords(fly.bodySize, openCoords_sorted[i, 0], openCoords_sorted[i, 1])
+            tmp = circleCoords(fly.bodySize, openCoords_sorted[i][0], openCoords_sorted[i][1])
             rows = tmp[:,0]
             cols = tmp[:,1]
             if all(fly.validCoords[rows, cols]):
                 openAngle = openAngles_sorted[i]
 
-                return openAngle
+                return openAngle, openCoords_sorted[i]
 
     # If no open coordinate was in detection range
     else:
         print('ERROR: No available coordinate reachable')
         openAngle = None
-
-        return openAngle
+        openCoords = None
+        return openAngle, openCoords
 
 
 # Choose speed based on previously chosen new angle (speed empirically depends on angle)
@@ -310,16 +311,12 @@ def chooseSpd(fly, mu=5, av_sigma=1, spdVarInc=0.1):
     return fly
 
 # Update new fly position based on chosen angle and speed
-def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5):
+def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5, openRadius=10):
 
     # Determine last absolute heading direction
     fly.lastAngleAbsBackUp = fly.lastAngleAbs
     #fly.lastAngleAbs = findatan2( fly.curPos[0] - fly.lastPos[0], fly.curPos[1] - fly.lastPos[1] )
     fly.lastAngleAbs = fly.curAngleAbs
-    # If last and current position are the same, last absolute angle is NaN; reassign old heading angle
-    if np.isnan(fly.lastAngleAbs):
-        print('last Angle should not be 0!')
-        fly.lastAngleAbs = fly.lastAngleAbsBackUp
 
     # If fly should wall follow, adjust mean of heading direction distribution to be mixed between straight ahead & closest wall angle (weighted by wallBias)
     # Note that wall 'attraction' increases as distance to wall decreases
@@ -336,16 +333,23 @@ def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5):
 
     # If fly proposed an out of bounds coordinate on the last cycle already, instead update last absolute heading angle to an open coordinate
     if fly.OOB > 0:
-        fly.curAngleAbs = detectOpenCoords(fly, detectRadius=fly.curSpd)
+        fly.curAngleAbs, fly.curPos = detectOpenCoords(fly, openRadius=openRadius)
+        #print('fly OOB, open Angle is', fly.curAngleAbs)
 
     # Set previous current position as last position for purpose of calculating the next position
     fly.lastPosBackUp = fly.lastPos.copy()
     fly.lastPos = fly.curPos.copy()
 
+    # If last and current position are the same, last absolute angle is NaN; reassign old heading angle
+    if np.isnan(fly.lastAngleAbs):
+        print('last Angle should not be 0!')
+        fly.lastAngleAbs = fly.lastAngleAbsBackUp
+
     # Make sure that fly-relative heading angle is already converted to map-relative cardinal angle
-    fly.curPos[0] = fly.lastPos[0] + fly.curSpd * math.cos(fly.curAngleAbs)
-    fly.curPos[1] = fly.lastPos[1] + fly.curSpd * math.sin(fly.curAngleAbs)
-    #print('Proposing position:', fly.curPos)
+    elif fly.OOB == 0:
+        fly.curPos[0] = fly.lastPos[0] + fly.curSpd * math.cos(fly.curAngleAbs)
+        fly.curPos[1] = fly.lastPos[1] + fly.curSpd * math.sin(fly.curAngleAbs)
+        #print('Proposing position:', fly.curPos)
 
     # Account for fly size for out-of-bounds checking with temporary variable
     flyBodyCoords = circleCoords(fly.bodySize, fly.curPos[0], fly.curPos[1])
