@@ -83,7 +83,8 @@ def getWeightedAngleMean(ang1, ang2, angleWeight):
 # Load picture of Y-maze outline
 # Note that real Y-maze arms are 3.6mm wide; 120px here; 0.03px/mm
 # Real Drosophila are ~2mm wide, 60px here to match arena's ~0.03px/mm ratio
-img = Image.open('/Users/alisc/Github/ABM-Drosophila/Ymaze.png')
+imgPath = os.getcwd() + '/Ymaze.png'
+img = Image.open(imgPath)
 # Convert image into array
 imgarray = np.asarray(img)
 imgYmaze = (imgarray[:,:,0] == 255).astype(bool)
