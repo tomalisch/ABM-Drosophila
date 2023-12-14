@@ -250,7 +250,10 @@ def detectWall(fly, detectRadius=1.5):
     return wallAngle, wallDist
 
 # Detect accessible coordinates around the fly, and their respective angles and distances
-def detectOpenCoords(fly, openRadius):
+def detectOpenCoords(fly):
+
+    # Set openRadius equal to current fly speed, so that proposed coordinate is in line with actual positional update
+    openRadius = fly.curSpd
 
     # Use circleCoords to draw sensory boundary around centroid at current location
     detectCoords = circumferenceCoords(openRadius, fly.curPos[0], fly.curPos[1])
@@ -312,7 +315,7 @@ def chooseSpd(fly, mu=5, av_sigma=1, spdVarInc=0.1):
     return fly
 
 # Update new fly position based on chosen angle and speed
-def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5, openRadius=5):
+def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5):
 
     # Determine last absolute heading direction
     fly.lastAngleAbsBackUp = fly.lastAngleAbs
@@ -334,7 +337,7 @@ def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5, openRadiu
 
     # If fly proposed an out of bounds coordinate on the last cycle already, instead update last absolute heading angle to an open coordinate
     if fly.OOB > 0:
-        fly.curAngleAbs, fly.curPos = detectOpenCoords(fly, openRadius=openRadius)
+        fly.curAngleAbs, fly.curPos = detectOpenCoords(fly)
         #print('fly OOB, open Angle is', fly.curAngleAbs)
 
     elif fly.OOB == 0:
