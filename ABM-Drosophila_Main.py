@@ -1,4 +1,6 @@
 ### Agent-based model of Drosophila decision-making
+# File contains base functions to run agent-based simulation of fruit fly locomotion in arbitrary arena shapes
+
 
 ## Dependencies
 import os
