@@ -299,9 +299,9 @@ def detectOpenCoords(fly):
                 return openAngle, openCoords_sorted[i,:]
 
     # If no open coordinate was in detection range, i.e., no open Angle and Coordinate was returned before:
-    print('ERROR: No available coordinate reachable')
+    print('ERROR: No available coordinate found', fly.curSpd, 'px around position ', fly.curPos)
     openAngle = np.NaN
-    openCoords = np.NaN
+    openCoords = [np.NaN, np.NaN]
     return openAngle, openCoords
 
 
@@ -340,7 +340,12 @@ def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5):
     # If fly proposed an out of bounds coordinate on the last cycle already, instead update last absolute heading angle to an open coordinate
     if fly.OOB > 0:
         fly.curAngleAbs, fly.curPos = detectOpenCoords(fly)
-        #print('fly OOB, open Angle is', fly.curAngleAbs)
+        # If no open angle was found, try moving to random position
+        if np.isnan(fly.curPos):
+            fly.curAngleAbs = np.deg2rad(random.randint(0,359))
+            fly.curPos[0] = fly.lastPos[0] + fly.curSpd * math.cos(fly.curAngleAbs)
+            fly.curPos[1] = fly.lastPos[1] + fly.curSpd * math.sin(fly.curAngleAbs)
+
 
     elif fly.OOB == 0:
 
