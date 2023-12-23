@@ -341,7 +341,7 @@ def updatePos(fly, wallFollowing=True, wallBias=0.1, detectRadius=1.5):
     if fly.OOB > 0:
         fly.curAngleAbs, fly.curPos = detectOpenCoords(fly)
         # If no open angle was found, try moving to random position
-        if np.isnan(fly.curPos):
+        if np.isnan(fly.curPos).any():
             fly.curAngleAbs = np.deg2rad(random.randint(0,359))
             fly.curPos[0] = fly.lastPos[0] + fly.curSpd * math.cos(fly.curAngleAbs)
             fly.curPos[1] = fly.lastPos[1] + fly.curSpd * math.sin(fly.curAngleAbs)
